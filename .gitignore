@@ -1,0 +1,68 @@
+# 编译产物
+*.o
+*.ko
+*.so
+*.a
+*.mod
+*.mod.c
+*.order
+*.symvers
+*.cmd
+*.d
+*.dwo
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+
+# 可执行文件
+mqtt_bridge
+rpc_server
+rpc_client
+LED_and_TempHumi
+test_*
+
+# Qt 编译临时文件
+*.pro.user
+*.pro.user.*
+Makefile
+ui_*.h
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+*.moc
+*.obj
+*.exe
+*.debug
+build-*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+venv/
+ENV/
+env/
+
+# 环境变量配置文件（敏感信息）
+.env
+.env.*
+!.env.example
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.bak
+
+# 日志和临时文件
+*.log
+*.pid
+*.tmp

@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+import json
+import os
+import paho.mqtt.client as mqtt
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS
+
+# ===== 配置区域（从环境变量读取）=====
+INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN")
+INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "influxdb_8KDcrG")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "influxdb_OPKwNw")
+MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USER = os.getenv("MQTT_USER")
+MQTT_PASS = os.getenv("MQTT_PASS")
+MQTT_TOPICS = ["device/response", "device/telemetry"]
+
+# 检查必需的环境变量
+required_vars = ["INFLUXDB_TOKEN", "MQTT_USER", "MQTT_PASS"]
+missing = [v for v in required_vars if not os.getenv(v)]
+if missing:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+
+# ========================
+influx_client = InfluxDBClient(
+    url=INFLUXDB_URL,
+    token=INFLUXDB_TOKEN,
+    org=INFLUXDB_ORG
+)
+write_api = influx_client.write_api(write_options=SYNCHRONOUS)
+
+def on_connect(client, userdata, flags, rc):
+    print(f"Connected to MQTT broker with result code {rc}")
+    for topic in MQTT_TOPICS:
+        client.subscribe(topic)
+        print(f"Subscribed to {topic}")
+
+def on_message(client, userdata, msg):
+    try:
+        data = json.loads(msg.payload.decode())
+        method = data.get("method", "unknown")
+
+        # 1. 处理遥测数据（主动上报）
+        if method == "telemetry" and "data" in data:
+            point = Point("sensor_data").tag("device", "imx6ull")
+            d = data["data"]
+            if "pir" in d:
+                point.field("pir", int(d["pir"]))
+            if "light" in d:
+                point.field("light", int(d["light"]))
+            if "humi" in d:
+                point.field("humidity", int(d["humi"]))
+            if "temp" in d:
+                point.field("temperature", int(d["temp"]))
+            if "relay" in d:
+                point.field("relay", int(d["relay"]))
+            if "relay2" in d:
+                point.field("relay2", int(d["relay2"]))
+            if "smoke_digital" in d:
+                point.field("smoke_digital", int(d["smoke_digital"]))
+            write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+            print(f"Written telemetry: {point}")
+            return
+
+        # 2. 处理控制响应（原有逻辑）
+        if data.get("success") != 1:
+            return
+
+        point = Point("sensor_data").tag("device", "imx6ull")
+
+        if method == "pir_read" and "data" in data and "pir" in data["data"]:
+            point.field("pir", int(data["data"]["pir"]))
+        elif method == "light_read" and "data" in data and "light" in data["data"]:
+            light_val = data["data"]["light"]
+            if isinstance(light_val, list):
+                light_val = light_val[0] if light_val else 0
+            point.field("light", int(light_val))
+        elif method == "dht11_read" and "data" in data:
+            humi = data["data"].get("humi")
+            temp = data["data"].get("temp")
+            if humi is not None:
+                point.field("humidity", int(humi))
+            if temp is not None:
+                point.field("temperature", int(temp))
+        elif method == "relay_control":
+            point.field("relay_success", 1)
+        elif method == "relay2_control":
+            point.field("relay2_success", 1)
+        elif method == "smoke_digital_read" and "data" in data and "smoke_digital" in data["data"]:
+            point.field("smoke_digital", int(data["data"]["smoke_digital"]))
+        else:
+            print(f"Unhandled method: {method}")
+            return
+
+        write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+        print(f"Written response: {point}")
+
+    except Exception as e:
+        print(f"Error: {e}")
+
+mqtt_client = mqtt.Client()
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+print("Starting MQTT Loop...")
+mqtt_client.loop_forever()
