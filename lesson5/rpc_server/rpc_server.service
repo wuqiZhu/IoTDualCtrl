@@ -1,0 +1,19 @@
+[Unit]
+Description=i.MX6ULL RPC Server - JSON-RPC hardware abstraction service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/rpc_server
+WorkingDirectory=/root
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rpc_server
+
+[Install]
+WantedBy=multi-user.target

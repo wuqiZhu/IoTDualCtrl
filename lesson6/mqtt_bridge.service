@@ -1,0 +1,21 @@
+[Unit]
+Description=i.MX6ULL MQTT Bridge - IoT gateway with auto-control
+After=network.target rpc_server.service
+Wants=network.target
+Requires=rpc_server.service
+
+[Service]
+Type=simple
+ExecStart=/root/mqtt_bridge
+WorkingDirectory=/root
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+EnvironmentFile=-/root/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mqtt_bridge
+
+[Install]
+WantedBy=multi-user.target

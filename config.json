@@ -1,0 +1,48 @@
+{
+    "mqtt": {
+        "host": "your_mqtt_broker_ip",
+        "port": 1883,
+        "username": "your_username",
+        "password": "",
+        "client_id": "mqtt_bridge",
+        "clean_session": true
+    },
+    "topics": {
+        "command": "device/control",
+        "response": "device/response",
+        "telemetry": "device/telemetry",
+        "alert": "device/alert"
+    },
+    "gpio": {
+        "dht11_pin": 115,
+        "pir_pin": 116,
+        "smoke_do_pin": 117,
+        "relay1_pin": 118,
+        "relay2_pin": 119
+    },
+    "adc": {
+        "light_path": "/sys/bus/iio/devices/iio:device0/in_voltage3_raw"
+    },
+    "thresholds": {
+        "light_threshold": 2000,
+        "temp_high": 32,
+        "temp_low": 30,
+        "smoke_alert_level": 0,
+        "pir_off_delay": 30,
+        "smoke_fan_duration": 30,
+        "smoke_alert_interval": 10
+    },
+    "intervals": {
+        "telemetry": 5,
+        "dht11_retry_delay_us": 1000,
+        "dht11_max_retries": 10,
+        "mqtt_reconnect_max_retries": 5,
+        "mqtt_reconnect_delay": 5
+    },
+    "rpc": {
+        "server_host": "127.0.0.1",
+        "port": 1234,
+        "read_timeout_ms": 3000,
+        "max_retries": 10
+    }
+}

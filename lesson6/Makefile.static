@@ -1,0 +1,121 @@
+# ==========================================================================
+# 静态分析工具集成
+# ==========================================================================
+
+# 工具定义
+CPPCHECK = cppcheck
+CLANG_TIDY = clang-tidy
+CLANG_FORMAT = clang-format
+
+# 源文件
+C_SOURCES = config.c log.c error.c
+CPP_SOURCES = mqtt_bridge.cpp rpc_client.cpp cJSON.cpp
+ALL_SOURCES = $(C_SOURCES) $(CPP_SOURCES)
+
+# 头文件路径
+INCLUDE_PATH = -I include/test/ \
+               -I include/common/ \
+               -I include/mqttclient \
+               -I include/ \
+               -I include/common/log \
+               -I include/mqtt \
+               -I ./include/platform/linux \
+               -I ./include/network
+
+# ==========================================================================
+# cppcheck 静态分析
+# ==========================================================================
+
+cppcheck:
+	@echo "Running cppcheck..."
+	$(CPPCHECK) --enable=all \
+		--suppress=missingIncludeSystem \
+		--suppress=unusedFunction \
+		--quiet \
+		--std=c11 \
+		$(INCLUDE_PATH) \
+		$(ALL_SOURCES)
+	@echo "cppcheck completed."
+
+# ==========================================================================
+# clang-tidy 静态分析
+# ==========================================================================
+
+clang-tidy:
+	@echo "Running clang-tidy..."
+	$(CLANG_TIDY) $(ALL_SOURCES) \
+		-- \
+		$(INCLUDE_PATH) \
+		-std=c11
+	@echo "clang-tidy completed."
+
+# ==========================================================================
+# clang-format 代码格式化
+# ==========================================================================
+
+clang-format:
+	@echo "Running clang-format..."
+	$(CLANG_FORMAT) -i -style=Google $(ALL_SOURCES)
+	@echo "clang-format completed."
+
+clang-format-check:
+	@echo "Checking code format..."
+	$(CLANG_FORMAT) --dry-run -Werror -style=Google $(ALL_SOURCES)
+	@echo "Format check completed."
+
+# ==========================================================================
+# 内存泄漏检测（Valgrind）
+# ==========================================================================
+
+valgrind:
+	@echo "Running Valgrind..."
+	valgrind --leak-check=full \
+		--show-leak-kinds=all \
+		--track-origins=yes \
+		--verbose \
+		./mqtt_bridge
+	@echo "Valgrind completed."
+
+# ==========================================================================
+# 编译警告检查
+# ==========================================================================
+
+warnings:
+	@echo "Checking for warnings..."
+	arm-buildroot-linux-gnueabihf-g++ -Wall -Wextra -Wpedantic \
+		-Wshadow -Wformat=2 -Wconversion \
+		-Wno-unused-parameter \
+		$(INCLUDE_PATH) \
+		-c $(CPP_SOURCES)
+	@echo "Warning check completed."
+
+# ==========================================================================
+# 代码统计
+# ==========================================================================
+
+stats:
+	@echo "=== Code Statistics ==="
+	@echo "C files:"
+	@wc -l $(C_SOURCES)
+	@echo "C++ files:"
+	@wc -l $(CPP_SOURCES)
+	@echo "Total lines:"
+	@wc -l $(ALL_SOURCES)
+	@echo "======================"
+
+# ==========================================================================
+# 帮助信息
+# ==========================================================================
+
+help:
+	@echo "Available static analysis targets:"
+	@echo "  cppcheck          - Run cppcheck static analysis"
+	@echo "  clang-tidy        - Run clang-tidy static analysis"
+	@echo "  clang-format      - Format code with clang-format"
+	@echo "  clang-format-check - Check code format"
+	@echo "  valgrind          - Run Valgrind memory check"
+	@echo "  warnings          - Check for compiler warnings"
+	@echo "  stats             - Show code statistics"
+	@echo "  help              - Show this help message"
+
+.PHONY: cppcheck clang-tidy clang-format clang-format-check valgrind warnings stats help

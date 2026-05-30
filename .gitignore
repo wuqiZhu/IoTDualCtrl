@@ -1,0 +1,62 @@
+# Compiled objects
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.lo
+*.la
+*.ko
+*.pyc
+
+# Python
+__pycache__/
+
+# Executables
+lesson5/rpc_server/rpc_server
+lesson5/rpc_client/rpc_client
+lesson6/mqtt_bridge
+lesson6/rpc_server
+lesson6/rpc_client
+
+# Qt build artifacts
+*.pro.user
+.qmake.stash
+lesson5/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi/Makefile
+lesson5/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi/*.o
+lesson5/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi/moc_*
+lesson5/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi/ui_*
+lesson5/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi
+
+# libev build artifacts
+lesson5/libev/.libs/
+lesson5/libev/.deps/
+lesson5/libev/*.o
+lesson5/libev/autom4te.cache/
+lesson5/libev/config.log
+lesson5/libev/config.status
+lesson5/libev/libtool
+lesson5/libev/stamp-h1
+lesson5/libev/stamp-h2
+lesson5/libev/stamp-h3
+
+# Environment files (contains secrets)
+.env
+.env.local
+.env.production
+
+# IDE config
+.trae/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build directories
+build/
+dist/

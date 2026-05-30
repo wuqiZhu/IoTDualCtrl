@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+import os
+import json
+import time
+import logging
+import paho.mqtt.client as mqtt
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ===== 配置区域 =====
+INFLUXDB_URL = os.environ.get("INFLUXDB_URL", "http://localhost:8086")
+INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN", "")
+INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "your_org")
+INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "your_bucket")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "localhost")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_USER = os.environ.get("MQTT_USER", "")
+MQTT_PASS = os.environ.get("MQTT_PASS", "")
+MQTT_TOPICS = ["device/response", "device/telemetry"]
+
+if not INFLUXDB_TOKEN:
+    logger.error("INFLUXDB_TOKEN 环境变量未设置")
+    exit(1)
+if not MQTT_PASS:
+    logger.error("MQTT_PASS 环境变量未设置")
+    exit(1)
+
+# ========================
+influx_client = InfluxDBClient(
+    url=INFLUXDB_URL,
+    token=INFLUXDB_TOKEN,
+    org=INFLUXDB_ORG
+)
+
+def verify_influxdb_connection():
+    try:
+        health = influx_client.health()
+        if health.status == "pass":
+            logger.info(f"InfluxDB connected successfully: {health.message}")
+            return True
+        else:
+            logger.error(f"InfluxDB health check failed: {health.status} - {health.message}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to connect to InfluxDB: {e}")
+        return False
+
+if not verify_influxdb_connection():
+    logger.error("Cannot connect to InfluxDB, exiting...")
+    exit(1)
+
+write_api = influx_client.write_api(write_options=SYNCHRONOUS)
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        logger.info("Connected to MQTT broker")
+        for topic in MQTT_TOPICS:
+            client.subscribe(topic)
+            logger.info(f"Subscribed to {topic}")
+    else:
+        logger.error(f"Failed to connect to MQTT broker with result code {rc}")
+
+def on_disconnect(client, userdata, rc):
+    if rc != 0:
+        logger.warning(f"Unexpected MQTT disconnection (rc={rc}). Will auto-reconnect.")
+
+def on_message(client, userdata, msg):
+    try:
+        data = json.loads(msg.payload.decode())
+        method = data.get("method", "unknown")
+
+        if method == "telemetry" and "data" in data:
+            point = Point("sensor_data").tag("device", "imx6ull")
+            d = data["data"]
+            if "pir" in d:
+                point.field("pir", int(d["pir"]))
+            if "light" in d:
+                point.field("light", int(d["light"]))
+            if "humi" in d:
+                point.field("humidity", int(d["humi"]))
+            if "temp" in d:
+                point.field("temperature", int(d["temp"]))
+            if "relay" in d:
+                point.field("relay", int(d["relay"]))
+            if "relay2" in d:
+                point.field("relay2", int(d["relay2"]))
+            if "smoke_digital" in d:
+                point.field("smoke_digital", int(d["smoke_digital"]))
+            write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+            logger.info(f"Written telemetry: {point}")
+            return
+
+        if data.get("success") != 1:
+            return
+
+        point = Point("sensor_data").tag("device", "imx6ull")
+
+        if method == "pir_read" and "data" in data and "pir" in data["data"]:
+            point.field("pir", int(data["data"]["pir"]))
+        elif method == "light_read" and "data" in data and "light" in data["data"]:
+            light_val = data["data"]["light"]
+            if isinstance(light_val, list):
+                light_val = light_val[0] if light_val else 0
+            point.field("light", int(light_val))
+        elif method == "dht11_read" and "data" in data:
+            humi = data["data"].get("humi")
+            temp = data["data"].get("temp")
+            if humi is not None:
+                point.field("humidity", int(humi))
+            if temp is not None:
+                point.field("temperature", int(temp))
+        elif method == "relay_control":
+            point.field("relay_success", 1)
+        elif method == "relay2_control":
+            point.field("relay2_success", 1)
+        elif method == "smoke_digital_read" and "data" in data and "smoke_digital" in data["data"]:
+            point.field("smoke_digital", int(data["data"]["smoke_digital"]))
+        else:
+            logger.debug(f"Unhandled method: {method}")
+            return
+
+        write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+        logger.info(f"Written response: {point}")
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}")
+    except Exception as e:
+        logger.exception(f"Error processing message: {e}")
+
+mqtt_client = mqtt.Client()
+mqtt_client.on_connect = on_connect
+mqtt_client.on_disconnect = on_disconnect
+mqtt_client.on_message = on_message
+mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+mqtt_client.reconnect_delay_set(min_delay=1, max_delay=60)
+
+logger.info("Starting MQTT Loop...")
+mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+mqtt_client.loop_forever()
