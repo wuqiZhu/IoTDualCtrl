@@ -410,6 +410,44 @@ int rpc_relay2_read(int *value) {
 }
 
 /* ========================================================================== */
+/*                              摄像头RPC接口 */
+/* ========================================================================== */
+
+/**
+ * @brief 摄像头抓拍（通过RPC调用rpc_server，避免直接操作摄像头硬件）
+ * @param filename 输出JPEG文件路径
+ * @return 0成功, -1失败
+ *
+ * 通过JSON-RPC调用 rpc_server 的 camera_capture_jpeg 方法，
+ * 由 rpc_server 临时初始化摄像头→抓拍→清理。
+ * mqtt_bridge 不再直接操作 /dev/video1，解决设备占用冲突。
+ */
+int rpc_camera_capture_jpeg(const char *filename) {
+  char params[512];
+  char escaped_name[384];
+  int i;
+
+  /* JSON转义反斜杠 */
+  for (i = 0; filename[i] && i < (int)sizeof(escaped_name) - 2; i++) {
+    if (filename[i] == '\\' || filename[i] == '"') {
+      if (i < (int)sizeof(escaped_name) - 3) {
+        escaped_name[i] = '\\';
+        escaped_name[i + 1] = filename[i];
+        i++;
+      }
+      break;
+    }
+    escaped_name[i] = filename[i];
+  }
+  size_t slen = (size_t)i;
+  if (slen >= sizeof(escaped_name)) slen = sizeof(escaped_name) - 1;
+  escaped_name[slen] = '\0';
+
+  snprintf(params, sizeof(params), "\"%s\"", escaped_name);
+  return rpc_call_no_result("camera_capture_jpeg", params);
+}
+
+/* ========================================================================== */
 /*                              连接管理 */
 /* ========================================================================== */
 

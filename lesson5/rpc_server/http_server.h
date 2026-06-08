@@ -27,7 +27,7 @@ extern "C" {
 #define HTTP_BUFFER_SIZE 4096
 
 /** @brief HTTP响应最大大小 */
-#define HTTP_RESPONSE_MAX_SIZE 8192
+#define HTTP_RESPONSE_MAX_SIZE 262144
 
 /** @brief 静态文件根目录最大长度 */
 #define HTTP_ROOT_MAX_LEN 256

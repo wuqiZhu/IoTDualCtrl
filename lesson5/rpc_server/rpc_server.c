@@ -16,6 +16,7 @@
  * 服务器监听端口1234，支持多个客户端同时连接。
  */
 
+#include "camera_manager.h"
 #include "dht11.h"
 #include "hal.h"
 #include "http_server.h"
@@ -272,6 +273,54 @@ cJSON *server_relay2_read(jrpc_context *ctx, cJSON *params, cJSON *id) {
 }
 
 /* ========================================================================== */
+/*                             摄像头RPC方法 */
+/* ========================================================================== */
+
+/**
+ * @brief 摄像头抓拍RPC方法
+ * @param ctx RPC上下文
+ * @param params 参数数组 [filename]
+ * @param id 请求ID
+ * @return cJSON数字 (0=成功, -1=失败)
+ *
+ * 临时初始化摄像头→抓拍→清理，用完即释放设备节点，
+ * 避免与其他进程（如Web API）冲突。
+ */
+cJSON *server_camera_capture_jpeg(jrpc_context *ctx, cJSON *params, cJSON *id) {
+  (void)ctx; (void)id;
+
+  if (!params || !cJSON_IsArray(params) || cJSON_GetArraySize(params) < 1) {
+    return cJSON_CreateNumber(-1);
+  }
+
+  cJSON *param = cJSON_GetArrayItem(params, 0);
+  if (!param || !cJSON_IsString(param)) {
+    return cJSON_CreateNumber(-1);
+  }
+
+  const char *filename = param->valuestring;
+
+  /* 临时初始化摄像头（如未初始化） */
+  int need_cleanup = 0;
+  if (!camera_get_status()) {
+    if (camera_init(NULL) != 0) {
+      printf("[RPC] camera_init failed for capture\n");
+      return cJSON_CreateNumber(-1);
+    }
+    need_cleanup = 1;
+  }
+
+  int ret = camera_capture_jpeg(filename);
+
+  /* 用完即释放 */
+  if (need_cleanup) {
+    camera_cleanup();
+  }
+
+  return cJSON_CreateNumber(ret == 0 ? 0 : -1);
+}
+
+/* ========================================================================== */
 /*                              RPC服务器管理 */
 /* ========================================================================== */
 
@@ -304,6 +353,8 @@ int RPC_Server_Init(void) {
   jrpc_register_procedure(&my_server, server_relay2_control, "relay2_control",
                           NULL);
   jrpc_register_procedure(&my_server, server_relay2_read, "relay2_read", NULL);
+  jrpc_register_procedure(&my_server, server_camera_capture_jpeg,
+                          "camera_capture_jpeg", NULL);
 
   printf("RPC server started, listening on port %d\n", PORT);
 
@@ -469,6 +520,41 @@ int main(int argc, char **argv) {
     http_server_register_api("/api/relay/2/control", api_control_relay);
     http_server_register_api("/api/led/control", api_control_led);
     http_server_register_api("/api/system", api_get_system_status);
+
+    /* 注册扩展API处理函数 */
+    extern int api_get_sensor_status(const char *, const char *, const char *, char *, int);
+    extern int api_get_device_info(const char *, const char *, const char *, char *, int);
+    extern int api_camera_capture(const char *, const char *, const char *, char *, int);
+    extern int api_camera_list(const char *, const char *, const char *, char *, int);
+    extern int api_camera_view(const char *, const char *, const char *, char *, int);
+    extern int api_ota_upgrade(const char *, const char *, const char *, char *, int);
+    extern int api_ota_status(const char *, const char *, const char *, char *, int);
+    extern int api_ota_rollback(const char *, const char *, const char *, char *, int);
+    extern int api_config_get(const char *, const char *, const char *, char *, int);
+    extern int api_config_update(const char *, const char *, const char *, char *, int);
+    extern int api_get_logs(const char *, const char *, const char *, char *, int);
+    extern int api_login(const char *, const char *, const char *, char *, int);
+    extern int api_logout(const char *, const char *, const char *, char *, int);
+    extern int api_auth_check(const char *, const char *, const char *, char *, int);
+    extern int api_change_password(const char *, const char *, const char *, char *, int);
+    extern int api_export_data(const char *, const char *, const char *, char *, int);
+
+    http_server_register_api("/api/sensor_status", api_get_sensor_status);
+    http_server_register_api("/api/device_info", api_get_device_info);
+    http_server_register_api("/api/camera/capture", api_camera_capture);
+    http_server_register_api("/api/camera/list", api_camera_list);
+    http_server_register_api("/api/camera/view", api_camera_view);
+    http_server_register_api("/api/ota/upgrade", api_ota_upgrade);
+    http_server_register_api("/api/ota/status", api_ota_status);
+    http_server_register_api("/api/ota/rollback", api_ota_rollback);
+    http_server_register_api("/api/config/get", api_config_get);
+    http_server_register_api("/api/config/update", api_config_update);
+    http_server_register_api("/api/logs", api_get_logs);
+    http_server_register_api("/api/auth/login", api_login);
+    http_server_register_api("/api/auth/logout", api_logout);
+    http_server_register_api("/api/auth/check", api_auth_check);
+    http_server_register_api("/api/auth/change_password", api_change_password);
+    http_server_register_api("/api/export", api_export_data);
 
     /* 启动HTTP服务器 */
     http_ret = http_server_start();

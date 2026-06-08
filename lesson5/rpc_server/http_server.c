@@ -181,12 +181,18 @@ static http_api_handler_t find_api_handler(const char *path) {
 static void handle_static_file(int client_fd, const char *path) {
   char filepath[512];
   struct stat st;
+  char clean_path[256];
+
+  /* 去掉查询参数（?后面的部分），静态文件路径不需要查询参数 */
+  strncpy(clean_path, path, sizeof(clean_path) - 1);
+  char *q = strchr(clean_path, '?');
+  if (q) *q = '\0';
 
   /* 构建文件路径 */
-  if (strcmp(path, "/") == 0) {
+  if (strcmp(clean_path, "/") == 0) {
     snprintf(filepath, sizeof(filepath), "%s/index.html", g_http.root_dir);
   } else {
-    snprintf(filepath, sizeof(filepath), "%s%s", g_http.root_dir, path);
+    snprintf(filepath, sizeof(filepath), "%s%s", g_http.root_dir, clean_path);
   }
 
   /* 检查文件是否存在 */
@@ -244,6 +250,14 @@ static void handle_request(int client_fd) {
     return;
   }
 
+  /* 分离查询参数（?后面的部分），API路由匹配不需要查询参数 */
+  char query_string[256] = {0};
+  char *qmark = strchr(path, '?');
+  if (qmark) {
+    strncpy(query_string, qmark + 1, sizeof(query_string) - 1);
+    *qmark = '\0';
+  }
+
   printf("[HTTP] %s %s\n", method, path);
 
   /* 查找请求体 */
@@ -252,9 +266,14 @@ static void handle_request(int client_fd) {
     body += 4; /* 跳过 \r\n\r\n */
   }
 
-  /* 检查是否是API请求 */
+  /* 检查是否是API请求（用无查询参数的路径匹配） */
+  char api_path[256];
+  strncpy(api_path, path, sizeof(api_path) - 1);
+  char *aq = strchr(api_path, '?');
+  if (aq) *aq = '\0';
+
   if (strncmp(path, "/api/", 5) == 0) {
-    http_api_handler_t handler = find_api_handler(path);
+    http_api_handler_t handler = find_api_handler(api_path);
     if (handler) {
       char response[HTTP_RESPONSE_MAX_SIZE] = {0};
       int ret = handler(method, path, body, response, sizeof(response));

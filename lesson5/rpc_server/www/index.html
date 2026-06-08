@@ -1,562 +1,361 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>i.MX6ULL 智慧环境监控系统</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        header {
-            text-align: center;
-            color: white;
-            margin-bottom: 30px;
-        }
-
-        header h1 {
-            font-size: 2rem;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        header p {
-            font-size: 1rem;
-            opacity: 0.9;
-        }
-
-        .status-bar {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 10px;
-            padding: 15px 20px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: white;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #4ade80;
-            animation: pulse 2s infinite;
-        }
-
-        .status-dot.offline {
-            background: #ef4444;
-            animation: none;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .card-title {
-            font-size: 1.1rem;
-            color: #374151;
-            font-weight: 600;
-        }
-
-        .card-icon {
-            font-size: 2rem;
-        }
-
-        .sensor-value {
-            font-size: 3rem;
-            font-weight: 700;
-            color: #1f2937;
-            margin-bottom: 10px;
-        }
-
-        .sensor-unit {
-            font-size: 1.2rem;
-            color: #6b7280;
-            font-weight: 400;
-        }
-
-        .sensor-label {
-            font-size: 0.9rem;
-            color: #9ca3af;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .status-badge.active {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-badge.inactive {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status-badge.warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .control-card {
-            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-        }
-
-        .btn {
-            display: inline-block;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-            margin-top: 15px;
-        }
-
-        .btn-on {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-        }
-
-        .btn-on:hover {
-            background: linear-gradient(135deg, #059669 0%, #047857 100%);
-            transform: scale(1.02);
-        }
-
-        .btn-off {
-            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
-            color: white;
-        }
-
-        .btn-off:hover {
-            background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
-            transform: scale(1.02);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-        }
-
-        .alert-card {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-            border: 2px solid #f59e0b;
-        }
-
-        .alert-card.normal {
-            background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-            border-color: #22c55e;
-        }
-
-        .refresh-info {
-            text-align: center;
-            color: rgba(255,255,255,0.7);
-            margin-top: 20px;
-            font-size: 0.9rem;
-        }
-
-        @media (max-width: 768px) {
-            body {
-                padding: 10px;
-            }
-
-            header h1 {
-                font-size: 1.5rem;
-            }
-
-            .sensor-value {
-                font-size: 2.5rem;
-            }
-
-            .status-bar {
-                flex-direction: column;
-                gap: 10px;
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.MX6ULL 智慧环境监控系统</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px}
+.container{max-width:1200px;margin:0 auto}
+header{text-align:center;color:#fff;margin-bottom:30px;padding:20px}
+header h1{font-size:2rem;text-shadow:2px 2px 4px rgba(0,0,0,.3)}
+.status-bar{background:rgba(255,255,255,.1);backdrop-filter:blur(10px);border-radius:10px;padding:15px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;color:#fff;flex-wrap:wrap;gap:10px}
+.status-dot{width:12px;height:12px;border-radius:50%;background:#4ade80;display:inline-block;margin-right:8px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.tabs{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.tab{padding:12px 24px;border:none;border-radius:10px;cursor:pointer;font-size:1rem;font-weight:600;background:rgba(255,255,255,.15);color:rgba(255,255,255,.7);transition:all .3s}
+.tab.active{background:#fff;color:#667eea;box-shadow:0 4px 15px rgba(0,0,0,.1)}
+.tab:hover{background:rgba(255,255,255,.25);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.card{background:#fff;border-radius:15px;padding:25px;box-shadow:0 10px 30px rgba(0,0,0,.1)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.card-title{font-size:1.1rem;color:#374151;font-weight:600}
+.card-icon{font-size:2rem}
+.sensor-value{font-size:3rem;font-weight:700;color:#1f2937;margin-bottom:10px}
+.sensor-unit{font-size:1.2rem;color:#6b7280;font-weight:400}
+.sensor-label{font-size:.9rem;color:#9ca3af;margin-top:5px}
+.status-badge{display:inline-block;padding:8px 16px;border-radius:20px;font-size:1rem;font-weight:600}
+.status-badge.active{background:#dcfce7;color:#166534}
+.status-badge.inactive{background:#fee2e2;color:#991b1b}
+.status-badge.warning{background:#fef3c7;color:#92400e}
+.btn{display:inline-block;padding:12px 24px;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;transition:all .3s;width:100%;margin-top:10px}
+.btn-on{background:linear-gradient(135deg,#10b981,#059669);color:#fff}
+.btn-on:hover{background:linear-gradient(135deg,#059669,#047857)}
+.btn-off{background:linear-gradient(135deg,#6b7280,#4b5563);color:#fff}
+.btn-off:hover{background:linear-gradient(135deg,#4b5563,#374151)}
+.btn-danger{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}
+.full-page{display:none}
+.full-page.active{display:block}
+.alert-card{background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #f59e0b}
+.alert-card.normal{background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-color:#22c55e}
+.refresh-info{text-align:center;color:rgba(255,255,255,.7);margin-top:20px;font-size:.9rem}
+@media(max-width:768px){header h1{font-size:1.5rem}.sensor-value{font-size:2.5rem}.status-bar{flex-direction:column;gap:10px}.tabs{overflow-x:auto;flex-wrap:nowrap}}
+.page-title{font-size:1.5rem;font-weight:700;color:#374151;margin-bottom:20px}
+.form-group{margin-bottom:15px}
+.form-group label{display:block;font-weight:600;color:#374151;margin-bottom:5px}
+.form-group input,.form-group select{width:100%;padding:10px;border:2px solid #e5e7eb;border-radius:8px;font-size:1rem}
+.form-group input:focus{outline:none;border-color:#667eea}
+.config-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+@media(max-width:768px){.config-grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>i.MX6ULL 智慧环境监控系统</h1>
-            <p>IoT Smart Environment Monitoring System</p>
-        </header>
+<div class="container">
+<header><h1>i.MX6ULL 智慧环境监控系统</h1></header>
+<div class="status-bar"><div><span class="status-dot" id="connectionDot"></span><span id="connectionText">连接中...</span></div><span id="lastUpdate">最后更新: --:--:--</span></div>
 
-        <div class="status-bar">
-            <div class="status-indicator">
-                <div class="status-dot" id="connectionStatus"></div>
-                <span id="connectionText">连接中...</span>
-            </div>
-            <div>
-                <span id="lastUpdate">最后更新: --:--:--</span>
-            </div>
-        </div>
+<div class="tabs">
+<button class="tab active" onclick="switchTab('sensors')">📊 传感器</button>
+<button class="tab" onclick="switchTab('camera')">📸 摄像头</button>
+<button class="tab" onclick="switchTab('ota')">🔄 OTA升级</button>
+<button class="tab" onclick="switchTab('config')">⚙️ 配置</button>
+<button class="tab" onclick="switchTab('logs')">📋 日志</button>
+<button class="tab" onclick="switchTab('system')">💻 设备</button>
+</div>
 
-        <div class="grid">
-            <!-- 温度卡片 -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">温度</span>
-                    <span class="card-icon">🌡️</span>
-                </div>
-                <div class="sensor-value">
-                    <span id="temperature">--</span>
-                    <span class="sensor-unit">°C</span>
-                </div>
-                <div class="sensor-label">DHT11 温度传感器</div>
-            </div>
+<!-- 传感器页面 -->
+<div id="page-sensors" class="full-page active">
+<div class="grid">
+<div class="card"><div class="card-header"><span class="card-title">温度</span><span class="card-icon">🌡️</span></div><div class="sensor-value"><span id="temperature">--</span><span class="sensor-unit">°C</span></div><div class="sensor-label">DHT11 温度传感器</div></div>
+<div class="card"><div class="card-header"><span class="card-title">湿度</span><span class="card-icon">💧</span></div><div class="sensor-value"><span id="humidity">--</span><span class="sensor-unit">%</span></div><div class="sensor-label">DHT11 湿度传感器</div></div>
+<div class="card"><div class="card-header"><span class="card-title">人体红外</span><span class="card-icon">👁️</span></div><div id="pirStatus" class="status-badge inactive">检测中...</div><div class="sensor-label">PIR 人体红外传感器</div></div>
+<div class="card"><div class="card-header"><span class="card-title">光照</span><span class="card-icon">☀️</span></div><div id="lightStatus" class="status-badge inactive">检测中...</div><div class="sensor-label">光敏传感器</div></div>
+<div class="card" id="smokeCard"><div class="card-header"><span class="card-title">烟雾</span><span class="card-icon">🔥</span></div><div id="smokeStatus" class="status-badge inactive">正常</div><div class="sensor-label">烟雾传感器</div></div>
+<div class="card control-card"><div class="card-header"><span class="card-title">风扇</span><span class="card-icon">🌀</span></div><div id="fanStatus" class="sensor-value" style="font-size:1.5rem">--</div><button class="btn btn-on" onclick="controlRelay(1,1)">打开风扇</button><button class="btn btn-off" onclick="controlRelay(1,0)">关闭风扇</button></div>
+<div class="card control-card"><div class="card-header"><span class="card-title">LED灯</span><span class="card-icon">💡</span></div><div id="ledStatus" class="sensor-value" style="font-size:1.5rem">--</div><button class="btn btn-on" onclick="controlRelay(2,1)">打开LED</button><button class="btn btn-off" onclick="controlRelay(2,0)">关闭LED</button></div>
+<div class="card control-card"><div class="card-header"><span class="card-title">板载LED</span><span class="card-icon">🔦</span></div><div id="led2Status" class="sensor-value" style="font-size:1.5rem">--</div><button class="btn btn-on" onclick="controlLED(1)">打开</button><button class="btn btn-off" onclick="controlLED(0)">关闭</button></div>
+</div></div>
 
-            <!-- 湿度卡片 -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">湿度</span>
-                    <span class="card-icon">💧</span>
-                </div>
-                <div class="sensor-value">
-                    <span id="humidity">--</span>
-                    <span class="sensor-unit">%</span>
-                </div>
-                <div class="sensor-label">DHT11 湿度传感器</div>
-            </div>
+<!-- 摄像头页面 -->
+<div id="page-camera" class="full-page">
+<div class="card">
+<div class="card-header"><span class="card-title">📸 摄像头</span></div>
+<div style="position:relative;min-height:300px;background:#1f2937;border-radius:8px;overflow:hidden;text-align:center">
+<img id="cameraImage" src="" alt="摄像头画面" style="width:100%;height:auto;display:none;margin:0 auto" />
+<div id="cameraPlaceholder" style="padding:100px 20px;color:#9ca3af"><p>点击"抓拍"按钮获取画面</p></div>
+</div>
+<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+<button class="btn btn-on" style="width:auto;flex:1;min-width:120px" onclick="capturePhoto()">📸 抓拍</button>
+<button class="btn btn-off" style="width:auto;flex:1;min-width:120px" onclick="startAutoRefresh()">🔄 自动刷新</button>
+<button class="btn btn-danger" style="width:auto;flex:1;min-width:120px" onclick="stopAutoRefresh()">⏹ 停止</button>
+</div>
+<div id="cameraStatus" style="margin-top:10px;color:#6b7280">状态：就绪</div>
+</div>
+<div class="card" style="margin-top:20px">
+<div class="card-header"><span class="card-title">最近抓拍</span></div>
+<div id="photoList"><p style="color:#9ca3af;padding:20px;text-align:center">暂无照片</p></div>
+</div></div>
 
-            <!-- PIR卡片 -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">人体感应</span>
-                    <span class="card-icon">👤</span>
-                </div>
-                <div style="margin: 20px 0;">
-                    <span class="status-badge" id="pirStatus">检测中...</span>
-                </div>
-                <div class="sensor-label">PIR 红外传感器</div>
-            </div>
+<!-- OTA页面 -->
+<div id="page-ota" class="full-page">
+<div class="card">
+<div class="card-header"><span class="card-title">🔄 OTA远程升级</span></div>
+<div class="form-group"><label>当前版本</label><input type="text" id="otaCurrentVer" value="--" readonly></div>
+<div class="form-group"><label>固件下载URL</label><input type="text" id="firmwareUrl" placeholder="http://server/firmware.bin"></div>
+<button class="btn btn-on" onclick="startOtaUpgrade()">开始升级</button>
+<button class="btn btn-danger" onclick="rollbackOta()">回滚固件</button>
+<div style="margin-top:20px;display:none" id="otaProgress"><div style="background:#e5e7eb;border-radius:10px;height:20px;overflow:hidden"><div id="otaProgressBar" style="background:linear-gradient(135deg,#667eea,#764ba2);height:100%;width:0%;transition:width .5s"></div></div><p style="text-align:center;margin-top:5px;color:#6b7280"><span id="otaPercent">0</span>%</p></div>
+<p id="otaMessage" style="margin-top:10px;color:#6b7280"></p>
+</div></div>
 
-            <!-- 光照卡片 -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">光照状态</span>
-                    <span class="card-icon">☀️</span>
-                </div>
-                <div style="margin: 20px 0;">
-                    <span class="status-badge" id="lightStatus">检测中...</span>
-                </div>
-                <div class="sensor-label">光敏传感器</div>
-            </div>
+<!-- 配置页面 -->
+<div id="page-config" class="full-page">
+<div class="card">
+<div class="card-header"><span class="card-title">⚙️ 配置管理</span></div>
+<div class="config-grid">
+<div class="form-group"><label>温度上限</label><input type="number" id="cfgTempHigh"></div>
+<div class="form-group"><label>温度下限</label><input type="number" id="cfgTempLow"></div>
+<div class="form-group"><label>烟雾风扇时长(秒)</label><input type="number" id="cfgSmokeFanDuration"></div>
+<div class="form-group"><label>告警间隔(秒)</label><input type="number" id="cfgSmokeAlertInterval"></div>
+<div class="form-group"><label>温度变化阈值</label><input type="number" id="cfgTempChange" step="0.1"></div>
+<div class="form-group"><label>湿度变化阈值</label><input type="number" id="cfgHumiChange" step="0.1"></div>
+<div class="form-group"><label>全量上报间隔(秒)</label><input type="number" id="cfgFullReport"></div>
+<div class="form-group"><label>心跳间隔(秒)</label><input type="number" id="cfgHeartbeat"></div>
+</div>
+<button class="btn btn-on" onclick="loadConfig()" style="width:auto;display:inline-block;margin-right:10px">📥 加载</button>
+<button class="btn btn-off" onclick="saveConfig()" style="width:auto;display:inline-block">💾 保存</button>
+</div></div>
 
-            <!-- 烟雾卡片 -->
-            <div class="card" id="smokeCard">
-                <div class="card-header">
-                    <span class="card-title">烟雾检测</span>
-                    <span class="card-icon">🔥</span>
-                </div>
-                <div style="margin: 20px 0;">
-                    <span class="status-badge" id="smokeStatus">检测中...</span>
-                </div>
-                <div class="sensor-label">烟雾传感器</div>
-            </div>
+<!-- 日志页面 -->
+<div id="page-logs" class="full-page">
+<div class="card">
+<div class="card-header"><span class="card-title">📋 系统日志</span></div>
+<div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+<select id="logLevel" style="padding:8px;border:2px solid #e5e7eb;border-radius:8px"><option value="all">全部</option><option value="error">ERROR</option><option value="warn">WARN</option><option value="info">INFO</option><option value="debug">DEBUG</option></select>
+<input type="text" id="logFilter" placeholder="关键词过滤" style="flex:1;padding:8px;border:2px solid #e5e7eb;border-radius:8px;min-width:100px">
+<button class="btn btn-on" style="width:auto;padding:8px 16px;margin:0" onclick="fetchLogs()">📥 刷新</button>
+</div>
+<pre id="logContent" style="background:#1f2937;color:#e5e7eb;padding:15px;border-radius:8px;max-height:500px;overflow-y:auto;font-size:.85rem;line-height:1.5;white-space:pre-wrap">等待加载...</pre>
+</div></div>
 
-            <!-- 风扇控制卡片 -->
-            <div class="card control-card">
-                <div class="card-header">
-                    <span class="card-title">风扇控制</span>
-                    <span class="card-icon">🌀</span>
-                </div>
-                <div style="margin: 20px 0;">
-                    <span class="status-badge" id="fanStatus">状态未知</span>
-                </div>
-                <button class="btn" id="fanBtn" onclick="toggleFan()">加载中...</button>
-            </div>
+<!-- 系统页面 -->
+<div id="page-system" class="full-page">
+<div class="grid">
+<div class="card"><div class="card-header"><span class="card-title">运行时间</span><span class="card-icon">⏱️</span></div><div class="sensor-value" style="font-size:2rem"><span id="devUptime">--</span></div></div>
+<div class="card"><div class="card-header"><span class="card-title">内存使用</span><span class="card-icon">💾</span></div><div style="background:#e5e7eb;border-radius:10px;height:30px;overflow:hidden;margin:10px 0"><div id="memBar" style="background:linear-gradient(135deg,#667eea,#764ba2);height:100%;width:0%;transition:width .5s"></div></div><div style="display:flex;justify-content:space-between;color:#6b7280"><span id="memUsed">--</span><span id="memTotal">--</span></div></div>
+<div class="card"><div class="card-header"><span class="card-title">主机名</span><span class="card-icon">🖥️</span></div><div id="devHostname" style="font-size:1.2rem">--</div></div>
+<div class="card"><div class="card-header"><span class="card-title">内核版本</span><span class="card-icon">🐧</span></div><div id="devKernel" style="font-size:1rem">--</div></div>
+<div class="card"><div class="card-header"><span class="card-title">磁盘空间</span><span class="card-icon">💽</span></div><div style="display:flex;justify-content:space-between"><span>已用: <span id="devDiskUsed">--</span></span><span>剩余: <span id="devDiskFree">--</span></span></div></div>
+<div class="card"><div class="card-header"><span class="card-title">📤 数据导出</span></div>
+<button class="btn btn-on" onclick="exportData('csv')" style="width:auto;display:inline-block;margin-right:10px">📊 导出CSV</button>
+<button class="btn btn-off" onclick="exportData('json')" style="width:auto;display:inline-block">📄 导出JSON</button>
+</div></div></div>
 
-            <!-- LED灯控制卡片 -->
-            <div class="card control-card">
-                <div class="card-header">
-                    <span class="card-title">LED灯控制</span>
-                    <span class="card-icon">💡</span>
-                </div>
-                <div style="margin: 20px 0;">
-                    <span class="status-badge" id="ledStatus">状态未知</span>
-                </div>
-                <button class="btn" id="ledBtn" onclick="toggleLed()">加载中...</button>
-            </div>
+<div class="refresh-info"><p>数据每 <span id="refreshInterval">2</span> 秒自动刷新 | <span id="loginInfo"></span></p></div>
+</div>
 
-            <!-- LED控制卡片 -->
-            <div class="card control-card">
-                <div class="card-header">
-                    <span class="card-title">板载LED</span>
-                    <span class="card-icon">🔆</span>
-                </div>
-                <div style="margin: 20px 0;">
-                    <span class="status-badge" id="boardLedStatus">状态未知</span>
-                </div>
-                <button class="btn" id="boardLedBtn" onclick="toggleBoardLed()">加载中...</button>
-            </div>
-        </div>
+<script>
+const API_BASE = '/api';
+let sensorTimer, autoRefreshTimer = null, otaTimer = null, logTimer = null;
+let fanState = 0, ledState = 0, lastCaptureFile = '';
 
-        <div class="refresh-info">
-            <p>数据每 <span id="refreshInterval">2</span> 秒自动刷新 | 点击按钮控制设备</p>
-        </div>
-    </div>
+function $(id){return document.getElementById(id)}
 
-    <script>
-        const API_BASE = '/api';
-        let fanState = 0;
-        let ledState = 0;
-        let boardLedState = 0;
+function switchTab(name){
+  document.querySelectorAll('.full-page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  $('page-'+name).classList.add('active');
+  document.querySelector(`.tab[onclick*="'${name}'"]`).classList.add('active');
+}
 
-        // API请求函数
-        async function apiCall(endpoint, method = 'GET', body = null) {
-            try {
-                const options = {
-                    method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                };
-                if (body) {
-                    options.body = JSON.stringify(body);
-                }
-                const response = await fetch(`${API_BASE}${endpoint}`, options);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return await response.json();
-            } catch (error) {
-                console.error('API call failed:', error);
-                return null;
-            }
-        }
+// 传感器
+async function fetchSensors(){
+  try{
+    const r = await fetch(API_BASE+'/sensors');
+    const d = await r.json();
+    if(d.temp !== undefined && d.temp !== -1) $('temperature').textContent = d.temp;
+    if(d.humi !== undefined && d.humi !== -1) $('humidity').textContent = d.humi;
+    if(d.pir !== undefined){const e=$('pirStatus'); e.textContent=d.pir===1?'检测到有人':'无人'; e.className='status-badge '+(d.pir===1?'active':'inactive');}
+    if(d.light !== undefined){const e=$('lightStatus'); e.textContent=d.light===0?'明亮':'黑暗'; e.className='status-badge '+(d.light===0?'active':'inactive');}
+    if(d.smoke_digital !== undefined){const e=$('smokeStatus'); const c=$('smokeCard'); if(d.smoke_digital===0){e.textContent='⚠️ 检测到烟雾!'; e.className='status-badge warning'; c.className='card alert-card'}else{e.textContent='正常'; e.className='status-badge active'; c.className='card alert-card normal'}}
+    if(d.relay !== undefined){fanState=d.relay; const e=$('fanStatus'); e.textContent=fanState===1?'🟢 运行中':'⚪ 已关闭'; e.style.color=fanState===1?'#10b981':'#6b7280'}
+    if(d.relay2 !== undefined){ledState=d.relay2; const e=$('ledStatus'); e.textContent=ledState===1?'🟢 已打开':'⚪ 已关闭'; e.style.color=ledState===1?'#10b981':'#6b7280'}
+    $('connectionDot').style.background = '#4ade80';
+    $('connectionText').textContent = '已连接';
+    $('lastUpdate').textContent = '最后更新: '+new Date().toLocaleTimeString();
+  }catch(e){$('connectionDot').style.background='#ef4444'; $('connectionText').textContent='断开'}
+}
 
-        // 更新传感器数据显示
-        function updateSensorDisplay(data) {
-            if (!data) return;
+async function controlRelay(id,state){
+  try{
+    const r = await fetch(API_BASE+'/relay/'+id+'/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:state})});
+    const d = await r.json();
+    if(d.success) fetchSensors();
+  }catch(e){}
+}
 
-            // 更新连接状态
-            document.getElementById('connectionStatus').classList.remove('offline');
-            document.getElementById('connectionText').textContent = '已连接';
+async function controlLED(state){
+  try{
+    const r = await fetch(API_BASE+'/led/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:state})});
+    const d = await r.json();
+    if(d.success) fetchSensors();
+  }catch(e){}
+}
 
-            // 更新时间
-            const now = new Date();
-            document.getElementById('lastUpdate').textContent =
-                `最后更新: ${now.toLocaleTimeString()}`;
+// 摄像头
+async function capturePhoto(){
+  const s=$('cameraStatus'); s.textContent='状态：正在抓拍...'; s.style.color='#f59e0b';
+  try{
+    const r = await fetch(API_BASE+'/camera/capture');
+    const d = await r.json();
+    if(d.success){
+      lastCaptureFile = d.file||'';
+      const img=$('cameraImage'), ph=$('cameraPlaceholder');
+      img.src = '/'+d.file+'?t='+Date.now();
+      img.style.display='block'; ph.style.display='none';
+      s.textContent='状态：抓拍成功 ('+d.size+' 字节)'; s.style.color='#10b981';
+      loadPhotoList();
+    }else{s.textContent='状态：抓拍失败 - '+(d.error||'未知错误'); s.style.color='#ef4444'}
+  }catch(e){s.textContent='状态：请求失败'; s.style.color='#ef4444'}
+}
 
-            // 温度
-            if (data.temp !== undefined && data.temp !== -1) {
-                document.getElementById('temperature').textContent = data.temp;
-            }
+function startAutoRefresh(){if(autoRefreshTimer)return;capturePhoto();autoRefreshTimer=setInterval(capturePhoto,3000);$('cameraStatus').textContent='状态：自动刷新中（每3秒）';$('cameraStatus').style.color='#10b981'}
+function stopAutoRefresh(){if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null}$('cameraStatus').textContent='状态：已停止';$('cameraStatus').style.color='#6b7280'}
 
-            // 湿度
-            if (data.humi !== undefined && data.humi !== -1) {
-                document.getElementById('humidity').textContent = data.humi;
-            }
+async function loadPhotoList(){
+  try{
+    const r = await fetch(API_BASE+'/camera/list');
+    const d = await r.json();
+    const el=$('photoList');
+    if(d.files&&d.files.length>0) el.innerHTML=d.files.map(f=>'<div style="padding:8px;border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="viewPhoto(\''+f+'\')"><span style="color:#3b82f6">🖼️ '+f.split('/').pop()+'</span></div>').join('');
+    else el.innerHTML='<p style="color:#9ca3af;text-align:center;padding:20px">暂无照片</p>';
+  }catch(e){}
+}
+async function viewPhoto(file){
+  try{
+    const r = await fetch(API_BASE+'/camera/view?file='+encodeURIComponent(file));
+    const d = await r.json();
+    if(d.success&&d.image){const img=$('cameraImage'),ph=$('cameraPlaceholder'); img.src=d.image; img.style.display='block'; ph.style.display='none'; $('cameraStatus').textContent='状态：查看 '+file.split('/').pop()}
+  }catch(e){}
+}
 
-            // PIR
-            if (data.pir !== undefined) {
-                const pirEl = document.getElementById('pirStatus');
-                if (data.pir === 1) {
-                    pirEl.textContent = '检测到有人';
-                    pirEl.className = 'status-badge active';
-                } else {
-                    pirEl.textContent = '无人';
-                    pirEl.className = 'status-badge inactive';
-                }
-            }
+// OTA
+async function startOtaUpgrade(){
+  const url=$('firmwareUrl').value.trim();
+  if(!url){alert('请输入固件URL');return}
+  if(!confirm('确定开始OTA升级？'))return;
+  const r = await fetch(API_BASE+'/ota/upgrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
+  const d = await r.json();
+  alert(d.message||(d.success?'已发送':'失败'));
+  if(d.success){$('otaProgress').style.display='block';otaTimer=setInterval(fetchOtaStatus,2000)}
+}
+async function fetchOtaStatus(){
+  try{
+    const r = await fetch(API_BASE+'/ota/status');
+    const d = await r.json();
+    const m={idle:'空闲',downloading:'下载中',verifying:'校验中',installing:'安装中',done:'完成',error:'错误'};
+    $('otaCurrentVer').value = d.current_version||'--';
+    if(d.state){$('otaMessage').textContent=m[d.state]||d.state;$('otaProgress').style.display='block';$('otaPercent').textContent=d.progress||0;$('otaProgressBar').style.width=(d.progress||0)+'%'}
+    if(d.state==='done'||d.state==='error'){clearInterval(otaTimer);otaTimer=null}
+  }catch(e){}
+}
+async function rollbackOta(){
+  if(!confirm('确定要回滚固件吗？'))return;
+  const r = await fetch(API_BASE+'/ota/rollback',{method:'POST'});
+  const d = await r.json();
+  alert(d.message||(d.success?'已发送':'失败'));
+}
 
-            // 光照
-            if (data.light !== undefined) {
-                const lightEl = document.getElementById('lightStatus');
-                if (data.light === 0) {
-                    lightEl.textContent = '明亮';
-                    lightEl.className = 'status-badge active';
-                } else {
-                    lightEl.textContent = '黑暗';
-                    lightEl.className = 'status-badge inactive';
-                }
-            }
+// 配置
+async function loadConfig(){
+  try{
+    const r = await fetch(API_BASE+'/config/get');
+    const d = await r.json();
+    if(!d)return;
+    if(d.temp_high!==undefined)$('cfgTempHigh').value=d.temp_high;
+    if(d.temp_low!==undefined)$('cfgTempLow').value=d.temp_low;
+    if(d.smoke_fan_duration!==undefined)$('cfgSmokeFanDuration').value=d.smoke_fan_duration;
+    if(d.smoke_alert_interval!==undefined)$('cfgSmokeAlertInterval').value=d.smoke_alert_interval;
+    if(d.temp_change!==undefined)$('cfgTempChange').value=d.temp_change;
+    if(d.humi_change!==undefined)$('cfgHumiChange').value=d.humi_change;
+    if(d.full_report!==undefined)$('cfgFullReport').value=d.full_report;
+    if(d.heartbeat!==undefined)$('cfgHeartbeat').value=d.heartbeat;
+    alert('配置加载成功！');
+  }catch(e){alert('加载失败')}
+}
+async function saveConfig(){
+  const cfg={};
+  cfg.temp_high=parseInt($('cfgTempHigh').value)||32;
+  cfg.temp_low=parseInt($('cfgTempLow').value)||30;
+  cfg.smoke_fan_duration=parseInt($('cfgSmokeFanDuration').value)||30;
+  cfg.smoke_alert_interval=parseInt($('cfgSmokeAlertInterval').value)||10;
+  cfg.temp_change=parseFloat($('cfgTempChange').value)||1;
+  cfg.humi_change=parseFloat($('cfgHumiChange').value)||5;
+  cfg.full_report=parseInt($('cfgFullReport').value)||300;
+  cfg.heartbeat=parseInt($('cfgHeartbeat').value)||60;
+  try{
+    const r = await fetch(API_BASE+'/config/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
+    const d = await r.json();
+    alert(d.success?'配置已发送':'保存失败');
+  }catch(e){alert('请求失败')}
+}
 
-            // 烟雾
-            if (data.smoke_digital !== undefined) {
-                const smokeEl = document.getElementById('smokeStatus');
-                const smokeCard = document.getElementById('smokeCard');
-                if (data.smoke_digital === 0) {
-                    smokeEl.textContent = '⚠️ 检测到烟雾!';
-                    smokeEl.className = 'status-badge warning';
-                    smokeCard.classList.add('alert-card');
-                    smokeCard.classList.remove('normal');
-                } else {
-                    smokeEl.textContent = '正常';
-                    smokeEl.className = 'status-badge active';
-                    smokeCard.classList.remove('alert-card');
-                    smokeCard.classList.add('normal');
-                }
-            }
+// 日志
+async function fetchLogs(){
+  const level=$('logLevel').value, filter=$('logFilter').value.trim();
+  try{
+    const r = await fetch(API_BASE+'/logs?level='+level+(filter?'&filter='+encodeURIComponent(filter):''));
+    const d = await r.json();
+    if(d.logs&&d.logs.length>0)$('logContent').textContent=d.logs.join('\n');
+    else $('logContent').textContent='无匹配日志';
+  }catch(e){$('logContent').textContent='加载失败'}
+}
 
-            // 继电器状态
-            if (data.relay !== undefined) {
-                fanState = data.relay;
-                updateRelayDisplay('fan', fanState);
-            }
-            if (data.relay2 !== undefined) {
-                ledState = data.relay2;
-                updateRelayDisplay('led', ledState);
-            }
-        }
+// 系统状态
+async function fetchSystem(){
+  try{
+    const r = await fetch(API_BASE+'/system');
+    const d = await r.json();
+    if(d.uptime!==undefined)$('devUptime').textContent=Math.floor(d.uptime/86400)+'天 '+Math.floor((d.uptime%86400)/3600)+'时 '+Math.floor((d.uptime%3600)/60)+'分';
+    if(d.mem_total!==undefined&&d.mem_free!==undefined){
+      const total=Math.round(d.mem_total/1024),free=Math.round(d.mem_free/1024),used=total-free,p=Math.round(used/total*100);
+      $('memBar').style.width=p+'%'; $('memUsed').textContent='已用: '+used+'MB ('+p+'%)'; $('memTotal').textContent='总计: '+total+'MB';
+    }
+  }catch(e){}
+  try{
+    const r = await fetch(API_BASE+'/device_info');
+    const d = await r.json();
+    if(d.hostname)$('devHostname').textContent=d.hostname;
+    if(d.kernel)$('devKernel').textContent=d.kernel;
+    if(d.disk_total_mb!==undefined&&d.disk_free_mb!==undefined){const used=d.disk_total_mb-d.disk_free_mb; $('devDiskUsed').textContent=used+'MB'; $('devDiskFree').textContent=d.disk_free_mb+'MB'}
+  }catch(e){}
+}
 
-        // 更新继电器显示
-        function updateRelayDisplay(type, state) {
-            const statusEl = document.getElementById(`${type}Status`);
-            const btnEl = document.getElementById(`${type}Btn`);
+// 导出
+async function exportData(fmt){
+  try{
+    const r = await fetch(API_BASE+'/export?format='+fmt);
+    const text = await r.text();
+    const blob = new Blob([text],{type:fmt==='csv'?'text/csv;charset=utf-8':'application/json;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sensor_data_'+new Date().toISOString().slice(0,19).replace(/[:-]/g,'')+'.'+fmt;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(e){alert('导出失败')}
+}
 
-            if (state === 1) {
-                statusEl.textContent = '已开启';
-                statusEl.className = 'status-badge active';
-                btnEl.textContent = '关闭';
-                btnEl.className = 'btn btn-danger';
-            } else {
-                statusEl.textContent = '已关闭';
-                statusEl.className = 'status-badge inactive';
-                btnEl.textContent = '开启';
-                btnEl.className = 'btn btn-on';
-            }
-        }
-
-        // 获取传感器数据
-        async function fetchSensorData() {
-            const data = await apiCall('/sensors');
-            if (data) {
-                updateSensorDisplay(data);
-            }
-        }
-
-        // 获取继电器状态
-        async function fetchRelayStatus() {
-            const relay1 = await apiCall('/relay/1');
-            const relay2 = await apiCall('/relay/2');
-
-            if (relay1) {
-                fanState = relay1.state;
-                updateRelayDisplay('fan', fanState);
-            }
-            if (relay2) {
-                ledState = relay2.state;
-                updateRelayDisplay('led', ledState);
-            }
-        }
-
-        // 切换风扇
-        async function toggleFan() {
-            const newState = fanState === 1 ? 0 : 1;
-            const result = await apiCall('/relay/1/control', 'POST', { state: newState });
-            if (result && result.success) {
-                fanState = newState;
-                updateRelayDisplay('fan', fanState);
-            }
-        }
-
-        // 切换LED灯
-        async function toggleLed() {
-            const newState = ledState === 1 ? 0 : 1;
-            const result = await apiCall('/relay/2/control', 'POST', { state: newState });
-            if (result && result.success) {
-                ledState = newState;
-                updateRelayDisplay('led', ledState);
-            }
-        }
-
-        // 切换板载LED
-        async function toggleBoardLed() {
-            const newState = boardLedState === 1 ? 0 : 1;
-            const result = await apiCall('/led/control', 'POST', { state: newState });
-            if (result && result.success) {
-                boardLedState = newState;
-                const statusEl = document.getElementById('boardLedStatus');
-                const btnEl = document.getElementById('boardLedBtn');
-                if (boardLedState === 1) {
-                    statusEl.textContent = '已开启';
-                    statusEl.className = 'status-badge active';
-                    btnEl.textContent = '关闭';
-                    btnEl.className = 'btn btn-danger';
-                } else {
-                    statusEl.textContent = '已关闭';
-                    statusEl.className = 'status-badge inactive';
-                    btnEl.textContent = '开启';
-                    btnEl.className = 'btn btn-on';
-                }
-            }
-        }
-
-        // 初始化
-        async function init() {
-            await fetchSensorData();
-            await fetchRelayStatus();
-
-            // 设置定时刷新
-            setInterval(fetchSensorData, 2000);
-            setInterval(fetchRelayStatus, 5000);
-        }
-
-        // 页面加载完成后初始化
-        window.addEventListener('load', init);
-    </script>
+// 初始化
+function init(){
+  fetchSensors(); fetchSystem(); fetchLogs();
+  sensorTimer = setInterval(()=>{
+    fetchSensors();
+    if($('page-system').classList.contains('active')) fetchSystem();
+  },2000);
+  logTimer = setInterval(()=>{if($('page-logs').classList.contains('active')) fetchLogs()},5000);
+}
+init();
+</script>
 </body>
 </html>

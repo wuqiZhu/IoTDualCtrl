@@ -16,6 +16,8 @@
 extern "C" {
 #endif
 
+#include <time.h>
+
 /* ========================================================================== */
 /*                              硬件引脚配置 */
 /* ========================================================================== */
@@ -71,14 +73,15 @@ typedef struct {
 
 /** @brief HAL错误码 */
 typedef enum {
-  HAL_OK = 0,                /**< 操作成功 */
-  HAL_ERROR = -1,            /**< 通用错误 */
-  HAL_ERROR_INVALID_PIN = -2, /**< 无效引脚 */
-  HAL_ERROR_OPEN = -3,        /**< 打开设备失败 */
-  HAL_ERROR_READ = -4,        /**< 读取失败 */
-  HAL_ERROR_WRITE = -5,       /**< 写入失败 */
-  HAL_ERROR_TIMEOUT = -6,     /**< 操作超时 */
-  HAL_ERROR_NOT_INIT = -7,    /**< 未初始化 */
+  HAL_OK = 0,                    /**< 操作成功 */
+  HAL_ERROR = -1,                /**< 通用错误 */
+  HAL_ERROR_INVALID_PIN = -2,    /**< 无效引脚 */
+  HAL_ERROR_OPEN = -3,           /**< 打开设备失败 */
+  HAL_ERROR_READ = -4,           /**< 读取失败 */
+  HAL_ERROR_WRITE = -5,          /**< 写入失败 */
+  HAL_ERROR_TIMEOUT = -6,        /**< 操作超时 */
+  HAL_ERROR_NOT_INIT = -7,       /**< 未初始化 */
+  HAL_ERROR_SENSOR_OFFLINE = -8, /**< 传感器离线（连续失败超过阈值） */
 } hal_error_t;
 
 /* ========================================================================== */
@@ -156,8 +159,43 @@ hal_error_t hal_adc_read_raw(int channel, int *value);
 hal_error_t hal_adc_read_voltage(int channel, int *voltage_mv);
 
 /* ========================================================================== */
-/*                              传感器接口 */
+/*                              传感器故障恢复配置 */
 /* ========================================================================== */
+
+/** @brief 传感器连续失败次数阈值，超过此值标记为离线 */
+#define HAL_SENSOR_FAILURE_THRESHOLD 5
+
+/** @brief 传感器离线后重试间隔（秒） */
+#define HAL_SENSOR_RETRY_INTERVAL 60
+
+/* ========================================================================== */
+/*                              传感器状态定义 */
+/* ========================================================================== */
+
+/** @brief 传感器ID */
+typedef enum {
+  HAL_SENSOR_DHT11 = 0,   /**< DHT11温湿度传感器 */
+  HAL_SENSOR_PIR,          /**< PIR人体红外传感器 */
+  HAL_SENSOR_LIGHT,        /**< 光敏传感器 */
+  HAL_SENSOR_SMOKE,        /**< 烟雾传感器 */
+  HAL_SENSOR_COUNT         /**< 传感器总数 */
+} hal_sensor_id_t;
+
+/** @brief 传感器状态 */
+typedef enum {
+  HAL_SENSOR_STATUS_ONLINE = 0,   /**< 在线 */
+  HAL_SENSOR_STATUS_OFFLINE,      /**< 离线（连续失败超过阈值） */
+  HAL_SENSOR_STATUS_UNKNOWN       /**< 未知（未初始化） */
+} hal_sensor_status_t;
+
+/** @brief 传感器状态信息结构体 */
+typedef struct {
+  hal_sensor_status_t status;     /**< 当前状态 */
+  int failure_count;              /**< 连续失败次数 */
+  time_t last_success_time;       /**< 最后成功时间 */
+  time_t last_failure_time;       /**< 最后失败时间 */
+  hal_error_t last_error;         /**< 最后一次错误码 */
+} hal_sensor_info_t;
 
 /**
  * @brief 初始化传感器
@@ -190,9 +228,17 @@ hal_error_t hal_sensor_light_read(int *value);
 /**
  * @brief 读取烟雾传感器（数字）
  * @param value 输出值 (0检测到烟雾, 1正常)
- * @return HAL_OK成功
+ * @return HAL_OK成功, HAL_ERROR_SENSOR_OFFLINE传感器离线
  */
 hal_error_t hal_sensor_smoke_digital_read(int *value);
+
+/**
+ * @brief 获取传感器状态信息
+ * @param sensor_id 传感器ID
+ * @param info 输出状态信息结构体
+ * @return HAL_OK成功
+ */
+hal_error_t hal_sensor_get_status(hal_sensor_id_t sensor_id, hal_sensor_info_t *info);
 
 /* ========================================================================== */
 /*                              执行器接口 */

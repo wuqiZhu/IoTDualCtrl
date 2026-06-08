@@ -3,10 +3,11 @@
  * @brief 日志系统模块
  * @author zhuxiangbo
  * @date 2026-05-23
- * @version 1.0
+ * @version 1.1
  *
  * 提供统一的日志输出功能，支持不同日志级别。
  * 可控制日志输出开关和输出目标（控制台/文件）。
+ * 支持日志文件轮转，防止单个日志文件过大。
  */
 
 #ifndef LOG_H
@@ -31,6 +32,16 @@ typedef enum {
   LOG_LEVEL_FATAL,     /**< 致命错误 */
   LOG_LEVEL_NONE       /**< 关闭日志 */
 } log_level_t;
+
+/* ========================================================================== */
+/*                              轮转配置常量 */
+/* ========================================================================== */
+
+/** @brief 默认单个日志文件最大大小（字节）：1MB */
+#define LOG_DEFAULT_MAX_FILE_SIZE (1 * 1024 * 1024)
+
+/** @brief 默认最大备份文件数量 */
+#define LOG_DEFAULT_MAX_BACKUP_COUNT 3
 
 /* ========================================================================== */
 /*                              日志宏定义 */
@@ -104,6 +115,22 @@ typedef enum {
 int log_init(log_level_t level, const char *log_file);
 
 /**
+ * @brief 初始化日志系统（带轮转配置）
+ * @param level 日志级别
+ * @param log_file 日志文件路径（NULL表示只输出到控制台）
+ * @param max_file_size 单个日志文件最大大小（字节）
+ * @param max_backup_count 最大备份文件数量
+ * @return 0成功, -1失败
+ *
+ * 日志轮转策略：
+ * - 当日志文件大小超过max_file_size时，执行轮转
+ * - 轮转时：log.2 -> log.3（删除）, log.1 -> log.2, log -> log.1, 新建log
+ * - 最多保留max_backup_count个备份文件
+ */
+int log_init_ex(log_level_t level, const char *log_file,
+                unsigned long max_file_size, int max_backup_count);
+
+/**
  * @brief 关闭日志系统
  */
 void log_close(void);
@@ -131,6 +158,12 @@ log_level_t log_get_level(void);
  */
 void log_write(log_level_t level, const char *file, int line, const char *func,
                const char *fmt, ...);
+
+/**
+ * @brief 获取日志文件当前大小
+ * @return 文件大小（字节），未打开文件返回0
+ */
+unsigned long log_get_file_size(void);
 
 #ifdef __cplusplus
 }

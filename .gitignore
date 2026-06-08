@@ -57,6 +57,14 @@ lesson5/libev/stamp-h3
 .DS_Store
 Thumbs.db
 
+# Debug / temp files (not committed)
+temp.txt
+temp/
+*.png
+
+# Snapshot backups (local development only)
+.snapshots/
+
 # Build directories
 build/
 dist/

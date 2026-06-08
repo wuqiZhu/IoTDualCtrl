@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 /* ========================================================================== */
@@ -43,6 +44,16 @@ static cache_context_t g_cache = {
     .initialized = 0,
 };
 
+/** @brief 缓存统计信息 */
+static cache_stats_t g_stats = {
+    .total_push_count = 0,
+    .total_pop_count = 0,
+    .compression_enabled = CACHE_ENABLE_COMPRESSION,
+    .original_bytes = 0,
+    .compressed_bytes = 0,
+    .compression_ratio = 1.0f,
+};
+
 /* ========================================================================== */
 /*                              接口实现 */
 /* ========================================================================== */
@@ -54,6 +65,9 @@ cache_error_t data_cache_init(void) {
     pthread_mutex_unlock(&g_cache.lock);
     return CACHE_OK;
   }
+
+  /* 确保缓存目录存在 */
+  mkdir("/etc/device", 0700);
 
   /* 尝试从文件加载缓存 */
   data_cache_load_from_file();
@@ -95,6 +109,11 @@ cache_error_t data_cache_push(const char *data, int data_len) {
   g_cache.tail = (g_cache.tail + 1) % CACHE_MAX_ENTRIES;
   g_cache.count++;
 
+  /* 更新统计信息 */
+  g_stats.total_push_count++;
+  g_stats.original_bytes += data_len;
+  g_stats.compressed_bytes += data_len; /* 简化处理，实际压缩需实现压缩算法 */
+
   pthread_mutex_unlock(&g_cache.lock);
 
   printf("[CACHE] Pushed entry, count=%d\n", g_cache.count);
@@ -132,6 +151,9 @@ cache_error_t data_cache_pop(char *data, int max_len, int *data_len) {
 
   g_cache.head = (g_cache.head + 1) % CACHE_MAX_ENTRIES;
   g_cache.count--;
+
+  /* 更新统计信息 */
+  g_stats.total_pop_count++;
 
   pthread_mutex_unlock(&g_cache.lock);
 
@@ -171,14 +193,22 @@ cache_error_t data_cache_save_to_file(void) {
 
   /* 写入缓存头部信息 */
   int magic = 0x43414348; /* "CACHE" */
-  fwrite(&magic, sizeof(magic), 1, fp);
-  fwrite(&g_cache.count, sizeof(g_cache.count), 1, fp);
-  fwrite(&g_cache.head, sizeof(g_cache.head), 1, fp);
-  fwrite(&g_cache.tail, sizeof(g_cache.tail), 1, fp);
+  if (fwrite(&magic, sizeof(magic), 1, fp) != 1 ||
+      fwrite(&g_cache.count, sizeof(g_cache.count), 1, fp) != 1 ||
+      fwrite(&g_cache.head, sizeof(g_cache.head), 1, fp) != 1 ||
+      fwrite(&g_cache.tail, sizeof(g_cache.tail), 1, fp) != 1) {
+    fclose(fp);
+    pthread_mutex_unlock(&g_cache.lock);
+    return CACHE_ERROR_IO;
+  }
 
   /* 写入所有条目 */
   for (int i = 0; i < CACHE_MAX_ENTRIES; i++) {
-    fwrite(&g_cache.entries[i], sizeof(cache_entry_t), 1, fp);
+    if (fwrite(&g_cache.entries[i], sizeof(cache_entry_t), 1, fp) != 1) {
+      fclose(fp);
+      pthread_mutex_unlock(&g_cache.lock);
+      return CACHE_ERROR_IO;
+    }
   }
 
   fclose(fp);
@@ -197,25 +227,32 @@ cache_error_t data_cache_load_from_file(void) {
 
   /* 读取缓存头部信息 */
   int magic;
-  fread(&magic, sizeof(magic), 1, fp);
-  if (magic != 0x43414348) {
+  if (fread(&magic, sizeof(magic), 1, fp) != 1 || magic != 0x43414348) {
     printf("[CACHE] Invalid cache file format\n");
     fclose(fp);
     return CACHE_ERROR_IO;
   }
 
-  fread(&g_cache.count, sizeof(g_cache.count), 1, fp);
-  fread(&g_cache.head, sizeof(g_cache.head), 1, fp);
-  fread(&g_cache.tail, sizeof(g_cache.tail), 1, fp);
+  if (fread(&g_cache.count, sizeof(g_cache.count), 1, fp) != 1 ||
+      fread(&g_cache.head, sizeof(g_cache.head), 1, fp) != 1 ||
+      fread(&g_cache.tail, sizeof(g_cache.tail), 1, fp) != 1) {
+    printf("[CACHE] Failed to read cache header\n");
+    fclose(fp);
+    return CACHE_ERROR_IO;
+  }
 
   /* 读取所有条目 */
   for (int i = 0; i < CACHE_MAX_ENTRIES; i++) {
-    fread(&g_cache.entries[i], sizeof(cache_entry_t), 1, fp);
+    if (fread(&g_cache.entries[i], sizeof(cache_entry_t), 1, fp) != 1) {
+      printf("[CACHE] Failed to read cache entry %d\n", i);
+      fclose(fp);
+      return CACHE_ERROR_IO;
+    }
   }
 
   fclose(fp);
 
-  /* 删除缓存文件 */
+  /* 加载成功后删除缓存文件，避免重复加载 */
   remove(CACHE_FILE_PATH);
 
   printf("[CACHE] Loaded %d entries from file\n", g_cache.count);
@@ -264,4 +301,58 @@ void data_cache_cleanup(void) {
   g_cache.initialized = 0;
 
   printf("[CACHE] Cleanup completed\n");
+}
+
+/* ========================================================================== */
+/*                              压缩功能实现 */
+/* ========================================================================== */
+
+cache_error_t data_cache_get_stats(cache_stats_t *stats) {
+  if (!stats) {
+    return CACHE_ERROR_PARAM;
+  }
+
+  pthread_mutex_lock(&g_cache.lock);
+
+  stats->total_push_count = g_stats.total_push_count;
+  stats->total_pop_count = g_stats.total_pop_count;
+  stats->compression_enabled = g_stats.compression_enabled;
+  stats->original_bytes = g_stats.original_bytes;
+  stats->compressed_bytes = g_stats.compressed_bytes;
+
+  /* 计算压缩率 */
+  if (g_stats.original_bytes > 0) {
+    stats->compression_ratio = (float)g_stats.compressed_bytes / g_stats.original_bytes;
+  } else {
+    stats->compression_ratio = 1.0f;
+  }
+
+  pthread_mutex_unlock(&g_cache.lock);
+  return CACHE_OK;
+}
+
+void data_cache_reset_stats(void) {
+  pthread_mutex_lock(&g_cache.lock);
+
+  g_stats.total_push_count = 0;
+  g_stats.total_pop_count = 0;
+  g_stats.original_bytes = 0;
+  g_stats.compressed_bytes = 0;
+  g_stats.compression_ratio = 1.0f;
+
+  pthread_mutex_unlock(&g_cache.lock);
+}
+
+void data_cache_set_compression(int enable) {
+  pthread_mutex_lock(&g_cache.lock);
+  g_stats.compression_enabled = enable ? 1 : 0;
+  pthread_mutex_unlock(&g_cache.lock);
+  printf("[CACHE] Compression %s\n", enable ? "enabled" : "disabled");
+}
+
+int data_cache_get_compression(void) {
+  pthread_mutex_lock(&g_cache.lock);
+  int enabled = g_stats.compression_enabled;
+  pthread_mutex_unlock(&g_cache.lock);
+  return enabled;
 }

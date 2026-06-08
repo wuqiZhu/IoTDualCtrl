@@ -14,7 +14,7 @@
 
 static int g_iSocketClient;
 
-// ========== Ô­ÓÐµÄ RPC º¯Êý ==========
+// ========== Ô­ï¿½Ðµï¿½ RPC ï¿½ï¿½ï¿½ï¿½ ==========
 int rpc_led_control(int on)
 {
     char buf[100];
@@ -39,8 +39,19 @@ int rpc_led_control(int on)
         if (iLen > 0)
         {
             cJSON *root = cJSON_Parse(buf);
+            if (root == NULL) {
+                printf("rpc_led_control: failed to parse JSON response\n");
+                return -1;
+            }
             cJSON *result = cJSON_GetObjectItem(root, "result");
-            ret = result->valueint;
+            if (result && cJSON_IsNumber(result))
+            {
+                ret = result->valueint;
+            }
+            else
+            {
+                printf("rpc_led_control: result is NULL or not a number\n");
+            }
             cJSON_Delete(root);
             return ret;
         }
@@ -227,7 +238,7 @@ int rpc_relay_control(int on)
             cJSON *result = cJSON_GetObjectItem(root, "result");
             if (result && cJSON_IsNumber(result))
             {
-                ret = result->valueint;  // 0 ±íÊ¾³É¹¦
+                ret = result->valueint;  // 0 ï¿½ï¿½Ê¾ï¿½É¹ï¿½
             }
             cJSON_Delete(root);
             return ret;
@@ -245,7 +256,7 @@ int rpc_relay_control(int on)
     }
 }
 
-// ========== ÐÂÔö£º¼ÌµçÆ÷2£¨LEDµÆ£©¿ØÖÆ ==========
+// ========== ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ìµï¿½ï¿½ï¿½2ï¿½ï¿½LEDï¿½Æ£ï¿½ï¿½ï¿½ï¿½ï¿½ ==========
 int rpc_relay2_control(int on)
 {
     char buf[100];
@@ -290,7 +301,7 @@ int rpc_relay2_control(int on)
     }
 }
 
-// ========== ÐÂÔö£ºÑÌÎíÊý×ÖÐÅºÅ¶ÁÈ¡ ==========
+// ========== ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅºÅ¶ï¿½È¡ ==========
 int rpc_smoke_digital_read(int *value)
 {
     char buf[100];
@@ -336,7 +347,7 @@ int rpc_smoke_digital_read(int *value)
     }
 }
 
-// ========== RPC ¿Í»§¶Ë³õÊ¼»¯ ==========
+// ========== RPC ï¿½Í»ï¿½ï¿½Ë³ï¿½Ê¼ï¿½ï¿½ ==========
 int RPC_Client_Init(void) 
 {
     int iSocketClient;
@@ -367,7 +378,7 @@ int RPC_Client_Init(void)
     return iSocketClient;    
 }
 
-// ========== ÃüÁîÐÐ°ïÖú ==========
+// ========== ï¿½ï¿½ï¿½ï¿½ï¿½Ð°ï¿½ï¿½ï¿½ ==========
 static void print_usage(const char *prog)
 {
     printf("Usage:\n");
@@ -387,7 +398,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    // ³õÊ¼»¯ RPC Á¬½Ó
+    // ï¿½ï¿½Ê¼ï¿½ï¿½ RPC ï¿½ï¿½ï¿½ï¿½
     if (RPC_Client_Init() < 0) {
         printf("Failed to initialize RPC client\n");
         return -1;
@@ -406,7 +417,7 @@ int main(int argc, char **argv)
         char humi, temp;
         int ret = rpc_dht11_read(&humi, &temp);
         if (ret == 0) {
-            printf("DHT11: Humidity = %d%%, Temperature = %d¡ãC\n", humi, temp);
+            printf("DHT11: Humidity = %d%%, Temperature = %dï¿½ï¿½C\n", humi, temp);
         } else {
             printf("DHT11 read failed\n");
         }

@@ -34,7 +34,7 @@ grep -rn "8\.140\." --include="*.c" --include="*.cpp" --include="*.h" && echo "�
 # 五、单元测试
 echo ""
 echo "--- 5. 单元测试 ---"
-cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c cJSON.c -lm -I. && echo "✅ 测试编译成功" || echo "❌ 测试编译失败"
+cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c -I../shared_lib/include ../shared_lib/src/cJSON.c -lm -I. && echo "✅ 测试编译成功" || echo "❌ 测试编译失败"
 ./test && echo "✅ 测试通过" || echo "❌ 测试失败"
 rm -f test
 cd ..

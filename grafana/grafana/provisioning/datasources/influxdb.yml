@@ -1,0 +1,12 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    database: iot_monitor
+    user: iot_user
+    password: iot123
+    isDefault: true
+    editable: true

@@ -9,11 +9,14 @@
 
 static int fd;
 static char g_humi, g_temp;
+static pthread_t g_dht11_thread_id;
+static int g_dht11_thread_created = 0;
 
 void *dht11_thread(void *arg) {
   (void)arg;
   char buf[2];
   while (1) {
+    pthread_testcancel();
     if (2 == read(fd, buf, 2)) {
       g_humi = buf[0];
       g_temp = buf[1];
@@ -23,10 +26,23 @@ void *dht11_thread(void *arg) {
 }
 
 void dht11_init(void) {
-  pthread_t tid1;
   fd = open("/dev/mydht11", O_RDWR | O_NONBLOCK);
   if (fd >= 0) {
-    pthread_create(&tid1, NULL, dht11_thread, NULL);
+    if (pthread_create(&g_dht11_thread_id, NULL, dht11_thread, NULL) == 0) {
+      g_dht11_thread_created = 1;
+    }
+  }
+}
+
+void dht11_cleanup(void) {
+  if (g_dht11_thread_created) {
+    pthread_cancel(g_dht11_thread_id);
+    pthread_join(g_dht11_thread_id, NULL);
+    g_dht11_thread_created = 0;
+  }
+  if (fd >= 0) {
+    close(fd);
+    fd = -1;
   }
 }
 

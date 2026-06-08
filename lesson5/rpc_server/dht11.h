@@ -2,6 +2,7 @@
 #define DHT11_H
 
 void dht11_init(void);
+void dht11_cleanup(void);
 int dht11_read(char *humi, char *temp);
 
 #endif // DHT11_H

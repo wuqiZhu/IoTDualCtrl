@@ -14,6 +14,7 @@ int rpc_relay_read(int *value);
 int rpc_smoke_digital_read(int *value);
 int rpc_relay2_control(int on);
 int rpc_relay2_read(int *value);
+int rpc_camera_capture_jpeg(const char *filename);
 int RPC_Client_Init(void);
 
 #ifdef __cplusplus

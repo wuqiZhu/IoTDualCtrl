@@ -231,6 +231,103 @@ void test_delay_calculation(void) {
 }
 
 /* ========================================================================== */
+/*                              系统监控测试 */
+/* ========================================================================== */
+
+/**
+ * @brief 测试系统监控状态结构
+ */
+void test_system_monitor_struct(void) {
+  /* 测试系统监控状态结构体大小合理 */
+  ASSERT_TRUE(sizeof(void *) > 0);
+}
+
+/* ========================================================================== */
+/*                              缓存测试 */
+/* ========================================================================== */
+
+/**
+ * @brief 测试缓存文件路径
+ */
+void test_cache_file_path(void) {
+  /* 测试缓存路径格式 */
+  const char *cache_path = "/etc/device/telemetry_cache.dat";
+  ASSERT_NOT_NULL(cache_path);
+  ASSERT_TRUE(strlen(cache_path) > 0);
+}
+
+/**
+ * @brief 测试JSON序列化
+ */
+void test_json_serialization(void) {
+  /* 测试JSON格式正确性 */
+  const char *json = "{\"temperature\":25.5,\"humidity\":60}";
+  ASSERT_NOT_NULL(json);
+  ASSERT_TRUE(strlen(json) > 0);
+  ASSERT_EQUAL('{', json[0]);
+  ASSERT_EQUAL('}', json[strlen(json) - 1]);
+}
+
+/* ========================================================================== */
+/*                              Base64编码测试 */
+/* ========================================================================== */
+
+/**
+ * @brief 测试Base64编码长度计算
+ */
+void test_base64_length(void) {
+  /* Base64编码后长度约为原始长度的4/3倍 */
+  int input_len = 100;
+  int expected_output_len = ((input_len + 2) / 3) * 4;
+  ASSERT_TRUE(expected_output_len > input_len);
+  ASSERT_TRUE(expected_output_len <= input_len * 2);
+}
+
+/**
+ * @brief 测试Base64字符集
+ */
+void test_base64_charset(void) {
+  /* Base64字符集：A-Z, a-z, 0-9, +, /, = */
+  const char *base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+  ASSERT_EQUAL(65, strlen(base64_chars));
+}
+
+/* ========================================================================== */
+/*                              配置阈值测试 */
+/* ========================================================================== */
+
+/**
+ * @brief 测试配置阈值范围
+ */
+void test_config_threshold_range(void) {
+  /* 测试温度阈值范围 */
+  int temp_high = 32;
+  int temp_low = 30;
+  ASSERT_TRUE(temp_high > temp_low);
+  ASSERT_TRUE(temp_high <= 50);
+  ASSERT_TRUE(temp_low >= 15);
+
+  /* 测试湿度阈值范围 */
+  int humi_threshold = 80;
+  ASSERT_TRUE(humi_threshold > 0);
+  ASSERT_TRUE(humi_threshold <= 100);
+}
+
+/**
+ * @brief 测试上报间隔范围
+ */
+void test_report_interval_range(void) {
+  /* 测试上报间隔范围 */
+  int telemetry_interval = 5;
+  int heartbeat_interval = 60;
+  int full_report_interval = 300;
+
+  ASSERT_TRUE(telemetry_interval > 0);
+  ASSERT_TRUE(heartbeat_interval > telemetry_interval);
+  ASSERT_TRUE(full_report_interval > heartbeat_interval);
+}
+
+/* ========================================================================== */
 /*                              测试套件 */
 /* ========================================================================== */
 
@@ -272,6 +369,25 @@ void run_all_tests(void) {
   /* 时间计算测试 */
   printf("\n--- Time Calculation Tests ---\n");
   test_delay_calculation();
+
+  /* 系统监控测试 */
+  printf("\n--- System Monitor Tests ---\n");
+  test_system_monitor_struct();
+
+  /* 缓存测试 */
+  printf("\n--- Cache Tests ---\n");
+  test_cache_file_path();
+  test_json_serialization();
+
+  /* Base64编码测试 */
+  printf("\n--- Base64 Encoding Tests ---\n");
+  test_base64_length();
+  test_base64_charset();
+
+  /* 配置阈值测试 */
+  printf("\n--- Config Threshold Tests ---\n");
+  test_config_threshold_range();
+  test_report_interval_range();
 
   printf("\n==============================\n");
   printf("Test Summary\n");

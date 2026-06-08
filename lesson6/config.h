@@ -34,6 +34,7 @@ typedef struct {
   char response[CONFIG_MAX_STRING_LEN];
   char telemetry[CONFIG_MAX_STRING_LEN];
   char alert[CONFIG_MAX_STRING_LEN];
+  char heartbeat[CONFIG_MAX_STRING_LEN];
 } topics_config_t;
 
 /** @brief 配置结构体 - GPIO引脚 */
@@ -58,6 +59,9 @@ typedef struct {
   int pir_off_delay;
   int smoke_fan_duration;
   int smoke_alert_interval;
+  int temp_change;
+  int humi_change;
+  int smoke_fault_timeout;
 } thresholds_config_t;
 
 /** @brief 配置结构体 - 间隔参数 */
@@ -67,6 +71,8 @@ typedef struct {
   int dht11_max_retries;
   int mqtt_reconnect_max_retries;
   int mqtt_reconnect_delay;
+  int heartbeat;
+  int full_report;
 } intervals_config_t;
 
 /** @brief 配置结构体 - RPC配置 */
@@ -123,6 +129,15 @@ int config_load_from_env(app_config_t *config);
  * 3. 最后用环境变量覆盖（如果设置了）
  */
 int config_load_combined(const char *filename, app_config_t *config);
+
+/**
+ * @brief 更新单个配置项
+ * @param config 配置结构体
+ * @param key 配置项名称（如"temp_high"）
+ * @param value 新的整数值
+ * @return 0成功, -1未找到配置项
+ */
+int config_update_int(app_config_t *config, const char *key, int value);
 
 #ifdef __cplusplus
 }

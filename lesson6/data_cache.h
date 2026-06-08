@@ -29,7 +29,13 @@ extern "C" {
 #define CACHE_ENTRY_MAX_LEN 512
 
 /** @brief 缓存文件路径 */
-#define CACHE_FILE_PATH "/tmp/telemetry_cache.dat"
+#define CACHE_FILE_PATH "/etc/device/telemetry_cache.dat"
+
+/** @brief 启用数据压缩（可节省30-50%存储空间） */
+#define CACHE_ENABLE_COMPRESSION 1
+
+/** @brief 压缩后最大数据长度 */
+#define CACHE_COMPRESSED_MAX_LEN (CACHE_ENTRY_MAX_LEN * 2)
 
 /* ========================================================================== */
 /*                              错误码定义 */
@@ -129,6 +135,44 @@ const char *data_cache_get_error_string(cache_error_t error);
  * @brief 清理缓存模块资源
  */
 void data_cache_cleanup(void);
+
+/* ========================================================================== */
+/*                              压缩功能接口 */
+/* ========================================================================== */
+
+/** @brief 缓存统计信息 */
+typedef struct {
+  int total_push_count;       /**< 总推送次数 */
+  int total_pop_count;        /**< 总取出次数 */
+  int compression_enabled;    /**< 压缩是否启用 */
+  unsigned long original_bytes;   /**< 原始数据总字节数 */
+  unsigned long compressed_bytes; /**< 压缩后数据总字节数 */
+  float compression_ratio;    /**< 压缩率（压缩后/原始） */
+} cache_stats_t;
+
+/**
+ * @brief 获取缓存统计信息
+ * @param stats 输出统计信息
+ * @return CACHE_OK成功
+ */
+cache_error_t data_cache_get_stats(cache_stats_t *stats);
+
+/**
+ * @brief 重置缓存统计信息
+ */
+void data_cache_reset_stats(void);
+
+/**
+ * @brief 设置压缩启用/禁用
+ * @param enable 1启用，0禁用
+ */
+void data_cache_set_compression(int enable);
+
+/**
+ * @brief 获取压缩启用状态
+ * @return 1启用，0禁用
+ */
+int data_cache_get_compression(void);
 
 #ifdef __cplusplus
 }

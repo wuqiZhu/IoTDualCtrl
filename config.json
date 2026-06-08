@@ -11,7 +11,8 @@
         "command": "device/control",
         "response": "device/response",
         "telemetry": "device/telemetry",
-        "alert": "device/alert"
+        "alert": "device/alert",
+        "heartbeat": "device/heartbeat"
     },
     "gpio": {
         "dht11_pin": 115,
@@ -30,14 +31,19 @@
         "smoke_alert_level": 0,
         "pir_off_delay": 30,
         "smoke_fan_duration": 30,
-        "smoke_alert_interval": 10
+        "smoke_alert_interval": 10,
+        "temp_change": 1,
+        "humi_change": 5,
+        "smoke_fault_timeout": 60
     },
     "intervals": {
         "telemetry": 5,
         "dht11_retry_delay_us": 1000,
         "dht11_max_retries": 10,
         "mqtt_reconnect_max_retries": 5,
-        "mqtt_reconnect_delay": 5
+        "mqtt_reconnect_delay": 5,
+        "heartbeat": 60,
+        "full_report": 300
     },
     "rpc": {
         "server_host": "127.0.0.1",

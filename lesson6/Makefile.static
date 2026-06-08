@@ -8,7 +8,7 @@ CLANG_TIDY = clang-tidy
 CLANG_FORMAT = clang-format
 
 # 源文件
-C_SOURCES = config.c log.c error.c
+C_SOURCES = config.c log.c error.c watchdog.c data_cache.c system_monitor.c device_auth.c msg_queue.c sensor_manager.c ota_manager.c
 CPP_SOURCES = mqtt_bridge.cpp rpc_client.cpp cJSON.cpp
 ALL_SOURCES = $(C_SOURCES) $(CPP_SOURCES)
 

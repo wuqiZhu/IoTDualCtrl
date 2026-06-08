@@ -30,6 +30,7 @@ static void config_init_defaults(app_config_t *config) {
   strcpy(config->topics.response, "device/response");
   strcpy(config->topics.telemetry, "device/telemetry");
   strcpy(config->topics.alert, "device/alert");
+  strcpy(config->topics.heartbeat, "device/heartbeat");
 
   /* GPIO默认配置 */
   config->gpio.pir_pin = 116;
@@ -49,6 +50,9 @@ static void config_init_defaults(app_config_t *config) {
   config->thresholds.pir_off_delay = 30;
   config->thresholds.smoke_fan_duration = 30;
   config->thresholds.smoke_alert_interval = 10;
+  config->thresholds.temp_change = 1;
+  config->thresholds.humi_change = 5;
+  config->thresholds.smoke_fault_timeout = 60;
 
   /* 间隔默认配置 */
   config->intervals.telemetry = 5;
@@ -56,6 +60,8 @@ static void config_init_defaults(app_config_t *config) {
   config->intervals.dht11_max_retries = 10;
   config->intervals.mqtt_reconnect_max_retries = 5;
   config->intervals.mqtt_reconnect_delay = 5;
+  config->intervals.heartbeat = 60;
+  config->intervals.full_report = 300;
 
   /* RPC默认配置 */
   strcpy(config->rpc.server_host, "127.0.0.1");
@@ -168,6 +174,8 @@ int config_load(const char *filename, app_config_t *config) {
                     CONFIG_MAX_STRING_LEN);
     json_get_string(topics, "alert", config->topics.alert,
                     CONFIG_MAX_STRING_LEN);
+    json_get_string(topics, "heartbeat", config->topics.heartbeat,
+                    CONFIG_MAX_STRING_LEN);
   }
 
   /* 读取GPIO配置 */
@@ -201,6 +209,12 @@ int config_load(const char *filename, app_config_t *config) {
         json_get_int(thresholds, "smoke_fan_duration", 30);
     config->thresholds.smoke_alert_interval =
         json_get_int(thresholds, "smoke_alert_interval", 10);
+    config->thresholds.temp_change =
+        json_get_int(thresholds, "temp_change", 1);
+    config->thresholds.humi_change =
+        json_get_int(thresholds, "humi_change", 5);
+    config->thresholds.smoke_fault_timeout =
+        json_get_int(thresholds, "smoke_fault_timeout", 60);
   }
 
   /* 读取间隔配置 */
@@ -215,6 +229,8 @@ int config_load(const char *filename, app_config_t *config) {
         json_get_int(intervals, "mqtt_reconnect_max_retries", 5);
     config->intervals.mqtt_reconnect_delay =
         json_get_int(intervals, "mqtt_reconnect_delay", 5);
+    config->intervals.heartbeat = json_get_int(intervals, "heartbeat", 60);
+    config->intervals.full_report = json_get_int(intervals, "full_report", 300);
   }
 
   /* 读取RPC配置 */
@@ -228,6 +244,52 @@ int config_load(const char *filename, app_config_t *config) {
   }
 
   cJSON_Delete(root);
+  return 0;
+}
+
+/**
+ * @brief 更新单个配置项
+ * @param config 配置结构体
+ * @param key 配置项名称
+ * @param value 新的整数值
+ * @return 0成功, -1未找到配置项
+ */
+int config_update_int(app_config_t *config, const char *key, int value) {
+  if (!config || !key) return -1;
+
+  /* 阈值配置 */
+  if (strcmp(key, "temp_high") == 0) {
+    config->thresholds.temp_high = value;
+  } else if (strcmp(key, "temp_low") == 0) {
+    config->thresholds.temp_low = value;
+  } else if (strcmp(key, "light_threshold") == 0) {
+    config->thresholds.light_threshold = value;
+  } else if (strcmp(key, "pir_off_delay") == 0) {
+    config->thresholds.pir_off_delay = value;
+  } else if (strcmp(key, "smoke_fan_duration") == 0) {
+    config->thresholds.smoke_fan_duration = value;
+  } else if (strcmp(key, "smoke_alert_interval") == 0) {
+    config->thresholds.smoke_alert_interval = value;
+  } else if (strcmp(key, "temp_change") == 0) {
+    config->thresholds.temp_change = value;
+  } else if (strcmp(key, "humi_change") == 0) {
+    config->thresholds.humi_change = value;
+  } else if (strcmp(key, "smoke_fault_timeout") == 0) {
+    config->thresholds.smoke_fault_timeout = value;
+  }
+  /* 间隔配置 */
+  else if (strcmp(key, "telemetry") == 0) {
+    config->intervals.telemetry = value;
+  } else if (strcmp(key, "heartbeat") == 0) {
+    config->intervals.heartbeat = value;
+  } else if (strcmp(key, "full_report") == 0) {
+    config->intervals.full_report = value;
+  } else {
+    printf("[CONFIG] Unknown config key: %s\n", key);
+    return -1;
+  }
+
+  printf("[CONFIG] Updated %s = %d\n", key, value);
   return 0;
 }
 

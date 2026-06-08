@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 /* ========================================================================== */
@@ -49,11 +50,66 @@ static hal_config_t hal_config = {
     .light_threshold = HAL_LIGHT_THRESHOLD,
 };
 
+/** @brief 传感器状态信息数组 */
+static hal_sensor_info_t sensor_info[HAL_SENSOR_COUNT] = {
+    [HAL_SENSOR_DHT11] = {HAL_SENSOR_STATUS_UNKNOWN, 0, 0, 0, HAL_OK},
+    [HAL_SENSOR_PIR]   = {HAL_SENSOR_STATUS_UNKNOWN, 0, 0, 0, HAL_OK},
+    [HAL_SENSOR_LIGHT] = {HAL_SENSOR_STATUS_UNKNOWN, 0, 0, 0, HAL_OK},
+    [HAL_SENSOR_SMOKE] = {HAL_SENSOR_STATUS_UNKNOWN, 0, 0, 0, HAL_OK},
+};
+
 /** @brief 继电器1状态 */
 static int relay1_state = 0;
 
 /** @brief 继电器2状态 */
 static int relay2_state = 0;
+
+/* ========================================================================== */
+/*                              传感器状态管理内部函数 */
+/* ========================================================================== */
+
+/**
+ * @brief 记录传感器读取成功
+ * @param sensor_id 传感器ID
+ */
+static void sensor_record_success(hal_sensor_id_t sensor_id) {
+  if (sensor_id >= HAL_SENSOR_COUNT) return;
+  sensor_info[sensor_id].failure_count = 0;
+  sensor_info[sensor_id].status = HAL_SENSOR_STATUS_ONLINE;
+  sensor_info[sensor_id].last_success_time = time(NULL);
+  sensor_info[sensor_id].last_error = HAL_OK;
+}
+
+/**
+ * @brief 记录传感器读取失败
+ * @param sensor_id 传感器ID
+ * @param error 错误码
+ */
+static void sensor_record_failure(hal_sensor_id_t sensor_id, hal_error_t error) {
+  if (sensor_id >= HAL_SENSOR_COUNT) return;
+  sensor_info[sensor_id].failure_count++;
+  sensor_info[sensor_id].last_failure_time = time(NULL);
+  sensor_info[sensor_id].last_error = error;
+  if (sensor_info[sensor_id].failure_count >= HAL_SENSOR_FAILURE_THRESHOLD) {
+    sensor_info[sensor_id].status = HAL_SENSOR_STATUS_OFFLINE;
+  }
+}
+
+/**
+ * @brief 检查传感器是否应该重试
+ * @param sensor_id 传感器ID
+ * @return 1应该重试, 0不应该重试
+ *
+ * 离线状态下，超过重试间隔后允许重试。
+ */
+static int sensor_should_retry(hal_sensor_id_t sensor_id) {
+  if (sensor_id >= HAL_SENSOR_COUNT) return 0;
+  if (sensor_info[sensor_id].status != HAL_SENSOR_STATUS_OFFLINE) return 1;
+
+  time_t now = time(NULL);
+  time_t last = sensor_info[sensor_id].last_failure_time;
+  return (now - last) >= HAL_SENSOR_RETRY_INTERVAL;
+}
 
 /** @brief 温度滤波缓冲区 */
 static int temp_buf[HAL_FILTER_TEMP_WINDOW] = {0};
@@ -114,7 +170,7 @@ hal_error_t hal_gpio_export(int pin) {
   char path[64];
 
   /* 检查是否已经导出 */
-  sprintf(path, "/sys/class/gpio/gpio%d", pin);
+  snprintf(path, sizeof(path), "/sys/class/gpio/gpio%d", pin);
   if (access(path, F_OK) == 0) {
     return HAL_OK; /* 已导出 */
   }
@@ -126,7 +182,7 @@ hal_error_t hal_gpio_export(int pin) {
     return HAL_ERROR_OPEN;
   }
 
-  sprintf(buf, "%d", pin);
+  snprintf(buf, sizeof(buf), "%d", pin);
   if (write(fd, buf, strlen(buf)) < 0) {
     if (errno == EBUSY) {
       close(fd);
@@ -153,7 +209,7 @@ hal_error_t hal_gpio_unexport(int pin) {
   if (fd < 0) {
     return HAL_ERROR_OPEN;
   }
-  sprintf(buf, "%d", pin);
+  snprintf(buf, sizeof(buf), "%d", pin);
   write(fd, buf, strlen(buf));
   close(fd);
   return HAL_OK;
@@ -169,7 +225,7 @@ hal_error_t hal_gpio_set_direction(int pin, int is_output) {
   char path[256];
   const char *dir = is_output ? "out" : "in";
 
-  sprintf(path, "/sys/class/gpio/gpio%d/direction", pin);
+  snprintf(path, sizeof(path), "/sys/class/gpio/gpio%d/direction", pin);
 
   if (access(path, W_OK) != 0) {
     printf("hal_gpio_set_direction: direction file not accessible for pin %d\n",
@@ -204,7 +260,7 @@ hal_error_t hal_gpio_read(int pin, int *value) {
   char path[256];
   char val = 0;
 
-  sprintf(path, "/sys/class/gpio/gpio%d/value", pin);
+  snprintf(path, sizeof(path), "/sys/class/gpio/gpio%d/value", pin);
 
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
@@ -233,7 +289,7 @@ hal_error_t hal_gpio_write(int pin, int value) {
   char path[256];
   char val = value ? '1' : '0';
 
-  sprintf(path, "/sys/class/gpio/gpio%d/value", pin);
+  snprintf(path, sizeof(path), "/sys/class/gpio/gpio%d/value", pin);
 
   int fd = open(path, O_WRONLY);
   if (fd < 0) {
@@ -274,7 +330,7 @@ hal_error_t hal_adc_read_raw(int channel, int *value) {
   char path[256];
   char buf[16] = {0};
 
-  sprintf(path, "/sys/bus/iio/devices/iio:device0/in_voltage%d_raw", channel);
+  snprintf(path, sizeof(path), "/sys/bus/iio/devices/iio:device0/in_voltage%d_raw", channel);
 
   int fd = open(path, O_RDONLY);
   if (fd < 0) {
@@ -366,9 +422,14 @@ hal_error_t hal_sensor_init(void) {
  * @brief 读取DHT11温湿度传感器
  * @param humidity 输出湿度值
  * @param temperature 输出温度值
- * @return HAL_OK成功
+ * @return HAL_OK成功, HAL_ERROR_SENSOR_OFFLINE传感器离线
  */
 hal_error_t hal_sensor_dht11_read(int *humidity, int *temperature) {
+  /* 检查传感器是否离线且不应重试 */
+  if (!sensor_should_retry(HAL_SENSOR_DHT11)) {
+    return HAL_ERROR_SENSOR_OFFLINE;
+  }
+
   char humi, temp;
   int retry_count = 0;
 
@@ -377,6 +438,7 @@ hal_error_t hal_sensor_dht11_read(int *humidity, int *temperature) {
     if (retry_count >= DHT11_MAX_RETRIES) {
       printf("hal_sensor_dht11_read: failed after %d retries\n",
              DHT11_MAX_RETRIES);
+      sensor_record_failure(HAL_SENSOR_DHT11, HAL_ERROR_TIMEOUT);
       return HAL_ERROR_TIMEOUT;
     }
     usleep(DHT11_RETRY_DELAY_US);
@@ -386,27 +448,43 @@ hal_error_t hal_sensor_dht11_read(int *humidity, int *temperature) {
                                HAL_FILTER_HUMI_WINDOW, (int)humi);
   *temperature = sliding_average(temp_buf, &temp_idx, &temp_count,
                                   HAL_FILTER_TEMP_WINDOW, (int)temp);
+  sensor_record_success(HAL_SENSOR_DHT11);
   return HAL_OK;
 }
 
 /**
  * @brief 读取PIR人体红外传感器
  * @param value 输出值 (0无人, 1有人)
- * @return HAL_OK成功
+ * @return HAL_OK成功, HAL_ERROR_SENSOR_OFFLINE传感器离线
  */
 hal_error_t hal_sensor_pir_read(int *value) {
-  return hal_gpio_read(hal_config.pir_pin, value);
+  if (!sensor_should_retry(HAL_SENSOR_PIR)) {
+    return HAL_ERROR_SENSOR_OFFLINE;
+  }
+
+  hal_error_t ret = hal_gpio_read(hal_config.pir_pin, value);
+  if (ret == HAL_OK) {
+    sensor_record_success(HAL_SENSOR_PIR);
+  } else {
+    sensor_record_failure(HAL_SENSOR_PIR, ret);
+  }
+  return ret;
 }
 
 /**
  * @brief 读取光敏传感器
  * @param value 输出值 (0明亮, 1黑暗)
- * @return HAL_OK成功
+ * @return HAL_OK成功, HAL_ERROR_SENSOR_OFFLINE传感器离线
  */
 hal_error_t hal_sensor_light_read(int *value) {
+  if (!sensor_should_retry(HAL_SENSOR_LIGHT)) {
+    return HAL_ERROR_SENSOR_OFFLINE;
+  }
+
   int raw;
   hal_error_t ret = hal_adc_read_raw(hal_config.light_adc_ch, &raw);
   if (ret != HAL_OK) {
+    sensor_record_failure(HAL_SENSOR_LIGHT, ret);
     return ret;
   }
 
@@ -414,18 +492,24 @@ hal_error_t hal_sensor_light_read(int *value) {
                                   HAL_FILTER_LIGHT_WINDOW, raw);
 
   *value = (filtered < hal_config.light_threshold) ? 0 : 1;
+  sensor_record_success(HAL_SENSOR_LIGHT);
   return HAL_OK;
 }
 
 /**
  * @brief 读取烟雾传感器（数字）
  * @param value 输出值 (0检测到烟雾, 1正常)
- * @return HAL_OK成功
+ * @return HAL_OK成功, HAL_ERROR_SENSOR_OFFLINE传感器离线
  */
 hal_error_t hal_sensor_smoke_digital_read(int *value) {
+  if (!sensor_should_retry(HAL_SENSOR_SMOKE)) {
+    return HAL_ERROR_SENSOR_OFFLINE;
+  }
+
   int raw;
   hal_error_t ret = hal_gpio_read(hal_config.smoke_do_pin, &raw);
   if (ret != HAL_OK) {
+    sensor_record_failure(HAL_SENSOR_SMOKE, ret);
     return ret;
   }
 
@@ -440,9 +524,24 @@ hal_error_t hal_sensor_smoke_digital_read(int *value) {
   }
 
   *value = smoke_confirmed_state;
+  sensor_record_success(HAL_SENSOR_SMOKE);
   return HAL_OK;
 }
 
+/**
+ * @brief 获取传感器状态信息
+ * @param sensor_id 传感器ID
+ * @param info 输出状态信息结构体
+ * @return HAL_OK成功
+ */
+hal_error_t hal_sensor_get_status(hal_sensor_id_t sensor_id,
+                                  hal_sensor_info_t *info) {
+  if (sensor_id >= HAL_SENSOR_COUNT || info == NULL) {
+    return HAL_ERROR;
+  }
+  *info = sensor_info[sensor_id];
+  return HAL_OK;
+}
 
 
 /* ========================================================================== */
@@ -627,6 +726,8 @@ const char *hal_get_error_string(hal_error_t error) {
     return "Operation timeout";
   case HAL_ERROR_NOT_INIT:
     return "Not initialized";
+  case HAL_ERROR_SENSOR_OFFLINE:
+    return "Sensor offline (too many consecutive failures)";
   default:
     return "Unknown error";
   }
