@@ -151,3 +151,10 @@ auto_control_temp:  temp > 32 → 又打开
 - 删除 `cloud/mqtt_to_influxdb.py.bak`、`.bak1`、`代码.txt`
 - 修复 `check_all.sh` 测试编译命令指向 `shared_lib` 路径
 - 更新 `.gitignore` 添加 `temp.txt`、`temp/`、`*.png` 过滤
+
+### 八、后续优化
+
+1. **check_all.sh 优化**：修复 sysfs 误报、硬编码IP白名单、增加 Python 依赖检查
+2. **单元测试扩展**：为 data_cache、msg_queue、crypto_utils、memory_pool 四个模块编写 18 个测试用例，覆盖环形缓冲区、消息队列、SHA-256/XOR/脱敏、内存池分配释放
+3. **部署脚本**：`deploy.sh` 支持 `cloud`（云端）、`board <IP>`（板端）、`test`（单元测试）、`build`（编译）四个模式
+4. **云端凭据清理**：`cloud/mqtt_to_influxdb.py` 中 INFLUXDB_TOKEN、MQTT_PASS、DINGTALK_WEBHOOK 默认值清空，强制通过环境变量设置

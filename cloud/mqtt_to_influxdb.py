@@ -29,17 +29,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ===== 配置（优先级：环境变量 > 默认值）=====
-# 敏感信息优先从环境变量读取，兜底用文件中备案的值
+# 敏感信息必须通过环境变量设置：INFLUXDB_TOKEN、MQTT_PASS、DINGTALK_WEBHOOK
 INFLUXDB_URL = os.environ.get("INFLUXDB_URL", "http://localhost:8086")
-INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN",
-    "zLM7_92XncKs7pzvlnWN6dMTYNM-ALlX3ao2y-JdFpHtUN-8S4n0NsysdpnPokiL5gziBXT6l3bLkr4HB6v8vQ==")
+INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN", "")
 INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "influxdb_8KDcrG")
 INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "influxdb_QPKwNw")
 
 MQTT_BROKER = os.environ.get("MQTT_BROKER", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_USER = os.environ.get("MQTT_USER", "zhuxiangbo")
-MQTT_PASS = os.environ.get("MQTT_PASS", "13979831637Zhu@")
+MQTT_PASS = os.environ.get("MQTT_PASS", "")
 
 # 订阅主题：所有需要处理的消息
 MQTT_TOPICS = [
@@ -49,8 +48,7 @@ MQTT_TOPICS = [
     "device/heartbeat",   # 设备心跳
 ]
 
-DINGTALK_WEBHOOK = os.environ.get("DINGTALK_WEBHOOK",
-    "https://oapi.dingtalk.com/robot/send?access_token=8861e36b7fdf589f916e8c8ef7bd43e786836e982402f519d293a002454efdb2")
+DINGTALK_WEBHOOK = os.environ.get("DINGTALK_WEBHOOK", "")
 
 # 敏感信息检查
 if not INFLUXDB_TOKEN:
