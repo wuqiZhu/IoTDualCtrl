@@ -134,7 +134,7 @@ run_tests() {
     test_cases.c error.c config.c \
     data_cache.c msg_queue.c crypto_utils.c memory_pool.c \
     -I../shared_lib/include ../shared_lib/src/cJSON.c \
-    -lm -lpthread -I.
+    -lm -lpthread -I. -lcrypto
 
   ./test
   local result=$?

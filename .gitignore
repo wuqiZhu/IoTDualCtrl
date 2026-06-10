@@ -62,9 +62,34 @@ temp.txt
 temp/
 *.png
 
+# Personal documents (NOT for public repo)
+我的简历.docx
+我的简历.pdf
+CSDN_文章_*.md
+
+# Debug test files
+lesson6/test_sha256_*
+lesson6/test_arith
+lesson6/test_mbedtls_include
+
 # Snapshot backups (local development only)
 .snapshots/
 
 # Build directories
 build/
 dist/
+
+# Third-party build artifacts (should use submodules or clean build)
+lesson5/jsonrpc-c/autom4te.cache/
+lesson5/jsonrpc-c/config.status
+lesson5/jsonrpc-c/config.log
+lesson5/jsonrpc-c/libtool
+lesson5/jsonrpc-c/.deps/
+lesson5/jsonrpc-c/tmp/
+lesson5/libev/autom4te.cache/
+lesson5/libev/config.status
+lesson5/libev/config.log
+lesson5/libev/libtool
+lesson5/libev/.deps/
+lesson5/libev/tmp/
+lesson5/libev/*.o

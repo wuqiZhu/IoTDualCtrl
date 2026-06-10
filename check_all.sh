@@ -50,7 +50,7 @@ fi
 # 六、单元测试
 echo ""
 echo "--- 6. 单元测试 ---"
-cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c -I../shared_lib/include ../shared_lib/src/cJSON.c -lm -I. 2>&1 && echo "✅ 测试编译成功" || echo "❌ 测试编译失败"
+cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c data_cache.c msg_queue.c crypto_utils.c memory_pool.c -I../shared_lib/include ../shared_lib/src/cJSON.c -lm -lpthread -I. -lcrypto 2>&1 && echo "✅ 测试编译成功" || echo "❌ 测试编译失败"
 if [ -f ./test ]; then
   ./test && echo "✅ 测试通过" || echo "❌ 测试失败"
   rm -f test

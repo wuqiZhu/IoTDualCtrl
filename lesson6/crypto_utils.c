@@ -3,10 +3,12 @@
  * @brief 数据安全工具模块实现
  * @author zhuxiangbo
  * @date 2026-05-31
- * @version 1.0
+ * @version 2.0
  *
  * 实现轻量级数据安全功能，适合嵌入式ARM平台。
  * 不依赖外部加密库，使用纯C实现。
+ *
+ * SHA-256 implementation based on FIPS 180-4.
  */
 
 #include "crypto_utils.h"
@@ -20,7 +22,7 @@
 /*                              SHA-256实现 */
 /* ========================================================================== */
 
-static const uint32_t sha256_k[64] = {
+static const uint32_t sha256_K[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
     0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -39,74 +41,42 @@ static const uint32_t sha256_k[64] = {
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 };
 
-#define ROTR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
+#define RR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 #define CH(x, y, z)  (((x) & (y)) ^ (~(x) & (z)))
-#define MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
-#define EP0(x) (ROTR(x, 2) ^ ROTR(x, 13) ^ ROTR(x, 22))
-#define EP1(x) (ROTR(x, 6) ^ ROTR(x, 11) ^ ROTR(x, 25))
-#define SIG0(x) (ROTR(x, 7) ^ ROTR(x, 18) ^ ((x) >> 3))
-#define SIG1(x) (ROTR(x, 17) ^ ROTR(x, 19) ^ ((x) >> 10))
+#define MJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define S0(x) (RR(x, 2) ^ RR(x, 13) ^ RR(x, 22))
+#define S1(x) (RR(x, 6) ^ RR(x, 11) ^ RR(x, 25))
+#define s0(x) (RR(x, 7) ^ RR(x, 18) ^ ((x) >> 3))
+#define s1(x) (RR(x, 17) ^ RR(x, 19) ^ ((x) >> 10))
 
-static uint32_t read_be32(const uint8_t *p) {
-  return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
-         ((uint32_t)p[2] << 8) | (uint32_t)p[3];
-}
-
-static void write_be32(uint8_t *p, uint32_t v) {
-  p[0] = (uint8_t)(v >> 24);
-  p[1] = (uint8_t)(v >> 16);
-  p[2] = (uint8_t)(v >> 8);
-  p[3] = (uint8_t)v;
-}
-
-static void sha256_transform(sha256_ctx_t *ctx, const uint8_t block[64]) {
-  uint32_t w[64];
-  uint32_t a, b, c, d, e, f, g, h;
-  uint32_t t1, t2;
+static void sha256_compress(uint32_t state[8], const uint8_t block[64]) {
+  uint32_t W[64], a, b, c, d, e, f, g, h, T1, T2;
   int i;
 
   for (i = 0; i < 16; i++) {
-    w[i] = read_be32(block + i * 4);
+    W[i] = ((uint32_t)block[4*i] << 24) | ((uint32_t)block[4*i+1] << 16) |
+           ((uint32_t)block[4*i+2] << 8) | (uint32_t)block[4*i+3];
   }
   for (i = 16; i < 64; i++) {
-    w[i] = SIG1(w[i - 2]) + w[i - 7] + SIG0(w[i - 15]) + w[i - 16];
+    W[i] = s1(W[i-2]) + W[i-7] + s0(W[i-15]) + W[i-16];
   }
 
-  a = ctx->state[0];
-  b = ctx->state[1];
-  c = ctx->state[2];
-  d = ctx->state[3];
-  e = ctx->state[4];
-  f = ctx->state[5];
-  g = ctx->state[6];
-  h = ctx->state[7];
+  a = state[0]; b = state[1]; c = state[2]; d = state[3];
+  e = state[4]; f = state[5]; g = state[6]; h = state[7];
 
   for (i = 0; i < 64; i++) {
-    t1 = h + EP1(e) + CH(e, f, g) + sha256_k[i] + w[i];
-    t2 = EP0(a) + MAJ(a, b, c);
-    h = g;
-    g = f;
-    f = e;
-    e = d + t1;
-    d = c;
-    c = b;
-    b = a;
-    a = t1 + t2;
+    T1 = h + S1(e) + CH(e, f, g) + sha256_K[i] + W[i];
+    T2 = S0(a) + MJ(a, b, c);
+    h = g; g = f; f = e; e = d + T1; d = c; c = b; b = a; a = T1 + T2;
   }
 
-  ctx->state[0] += a;
-  ctx->state[1] += b;
-  ctx->state[2] += c;
-  ctx->state[3] += d;
-  ctx->state[4] += e;
-  ctx->state[5] += f;
-  ctx->state[6] += g;
-  ctx->state[7] += h;
+  state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+  state[4] += e; state[5] += f; state[6] += g; state[7] += h;
 }
 
 crypto_error_t sha256_init(sha256_ctx_t *ctx) {
   if (!ctx) return CRYPTO_ERROR_PARAM;
-
+  ctx->count = 0;
   ctx->state[0] = 0x6a09e667;
   ctx->state[1] = 0xbb67ae85;
   ctx->state[2] = 0x3c6ef372;
@@ -115,66 +85,75 @@ crypto_error_t sha256_init(sha256_ctx_t *ctx) {
   ctx->state[5] = 0x9b05688c;
   ctx->state[6] = 0x1f83d9ab;
   ctx->state[7] = 0x5be0cd19;
-  ctx->count = 0;
   memset(ctx->buffer, 0, 64);
-
   return CRYPTO_OK;
 }
 
 crypto_error_t sha256_update(sha256_ctx_t *ctx, const void *data, size_t len) {
   if (!ctx || !data) return CRYPTO_ERROR_PARAM;
-
   const uint8_t *p = (const uint8_t *)data;
-  size_t buffered = (size_t)(ctx->count / 8) % 64;
+  size_t idx = (size_t)((ctx->count / 8) % 64);
 
   ctx->count += (uint64_t)len * 8;
 
-  if (buffered > 0) {
-    size_t fill = 64 - buffered;
+  if (idx) {
+    size_t fill = 64 - idx;
     if (len >= fill) {
-      memcpy(ctx->buffer + buffered, p, fill);
-      sha256_transform(ctx, ctx->buffer);
+      memcpy(ctx->buffer + idx, p, fill);
+      sha256_compress(ctx->state, ctx->buffer);
       p += fill;
       len -= fill;
-      buffered = 0;
     } else {
-      memcpy(ctx->buffer + buffered, p, len);
+      memcpy(ctx->buffer + idx, p, len);
       return CRYPTO_OK;
     }
   }
 
   while (len >= 64) {
-    sha256_transform(ctx, p);
+    sha256_compress(ctx->state, p);
     p += 64;
     len -= 64;
   }
 
-  if (len > 0) {
+  if (len)
     memcpy(ctx->buffer, p, len);
-  }
 
   return CRYPTO_OK;
 }
 
 crypto_error_t sha256_final(sha256_ctx_t *ctx, uint8_t hash[SHA256_HASH_SIZE]) {
   if (!ctx || !hash) return CRYPTO_ERROR_PARAM;
+  size_t idx = (size_t)((ctx->count / 8) % 64);
 
-  size_t buffered = (size_t)(ctx->count / 8) % 64;
-  ctx->buffer[buffered++] = 0x80;
+  ctx->buffer[idx++] = 0x80;
 
-  if (buffered > 56) {
-    memset(ctx->buffer + buffered, 0, 64 - buffered);
-    sha256_transform(ctx, ctx->buffer);
-    buffered = 0;
+  if (idx > 56) {
+    memset(ctx->buffer + idx, 0, 64 - idx);
+    sha256_compress(ctx->state, ctx->buffer);
+    idx = 0;
   }
 
-  memset(ctx->buffer + buffered, 0, 56 - buffered);
-  write_be32(ctx->buffer + 56, (uint32_t)(ctx->count >> 32));
-  write_be32(ctx->buffer + 60, (uint32_t)ctx->count);
-  sha256_transform(ctx, ctx->buffer);
+  memset(ctx->buffer + idx, 0, 56 - idx);
 
+  /* Append bit count in big-endian */
+  uint64_t bits = ctx->count;
+  ctx->buffer[56] = (uint8_t)(bits >> 56);
+  ctx->buffer[57] = (uint8_t)(bits >> 48);
+  ctx->buffer[58] = (uint8_t)(bits >> 40);
+  ctx->buffer[59] = (uint8_t)(bits >> 32);
+  ctx->buffer[60] = (uint8_t)(bits >> 24);
+  ctx->buffer[61] = (uint8_t)(bits >> 16);
+  ctx->buffer[62] = (uint8_t)(bits >> 8);
+  ctx->buffer[63] = (uint8_t)(bits);
+
+  sha256_compress(ctx->state, ctx->buffer);
+
+  /* Output hash in big-endian */
   for (int i = 0; i < 8; i++) {
-    write_be32(hash + i * 4, ctx->state[i]);
+    hash[4*i+0] = (uint8_t)(ctx->state[i] >> 24);
+    hash[4*i+1] = (uint8_t)(ctx->state[i] >> 16);
+    hash[4*i+2] = (uint8_t)(ctx->state[i] >> 8);
+    hash[4*i+3] = (uint8_t)(ctx->state[i]);
   }
 
   secure_memzero(ctx, sizeof(sha256_ctx_t));
@@ -185,12 +164,11 @@ crypto_error_t sha256_calc(const void *data, size_t len, uint8_t hash[SHA256_HAS
   sha256_ctx_t ctx;
   crypto_error_t ret;
 
+  if (!data || !hash) return CRYPTO_ERROR_PARAM;
   ret = sha256_init(&ctx);
   if (ret != CRYPTO_OK) return ret;
-
   ret = sha256_update(&ctx, data, len);
   if (ret != CRYPTO_OK) return ret;
-
   return sha256_final(&ctx, hash);
 }
 
@@ -295,8 +273,8 @@ crypto_error_t mask_email(const char *email, char *output, size_t output_size) {
 crypto_error_t mask_password(const char *password, char *output, size_t output_size) {
   if (!password || !output || output_size < 3) return CRYPTO_ERROR_PARAM;
 
-  size_t len = strlen(password);
-  size_t mask_len = len < 8 ? 8 : len;
+  /* 不泄露密码长度，固定8个星号 */
+  size_t mask_len = 8;
   if (mask_len >= output_size) mask_len = output_size - 1;
 
   memset(output, '*', mask_len);

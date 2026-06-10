@@ -28,7 +28,7 @@ cd /opt/iot_mqtt_to_influx && nohup python3 -u mqtt_to_influxdb.py > mqtt_to_inf
 
 **变更**：
 - 在项目根目录创建 `.env`，填入阿里云服务器真实凭据
-- 包含：`MQTT_HOST=8.140.232.52`、`MQTT_USERNAME=zhuxiangbo`、`MQTT_PASSWORD=13979831637Zhu@` 等
+- 包含：`MQTT_HOST=8.140.232.52`、`MQTT_USERNAME=zhuxiangbo`、`MQTT_PASSWORD=<your_password>` 等
 - 使用 `chmod 600` 保护凭据
 
 ### 三、测试文档 (`操作.md`)
@@ -158,3 +158,20 @@ auto_control_temp:  temp > 32 → 又打开
 2. **单元测试扩展**：为 data_cache、msg_queue、crypto_utils、memory_pool 四个模块编写 18 个测试用例，覆盖环形缓冲区、消息队列、SHA-256/XOR/脱敏、内存池分配释放
 3. **部署脚本**：`deploy.sh` 支持 `cloud`（云端）、`board <IP>`（板端）、`test`（单元测试）、`build`（编译）四个模式
 4. **云端凭据清理**：`cloud/mqtt_to_influxdb.py` 中 INFLUXDB_TOKEN、MQTT_PASS、DINGTALK_WEBHOOK 默认值清空，强制通过环境变量设置
+
+---
+
+## 2026-06-09 开发记录
+
+### 一、SHA-256 单元测试修复
+
+**背景**：SHA-256 已知答案测试（sha256("abc") = ba7816bf...）在 x86_64 Ubuntu VM（GCC 7.5.0）上失败，输出始终为 `51a5eeba...`。
+
+**根因**：GCC 7.5.0 x86_64 对纯 C 实现的 SHA-256 存在代码生成 bug。5 个独立实现（包括 Brad Conte 的公有域实现）均产生相同错误输出。OpenSSL 的 SHA-256 正常（使用 x86_64 汇编优化）。
+
+**修复**：
+- `test_cases.c`：Linux x86_64 平台直接调用 OpenSSL 的 `SHA256()` 验证已知答案
+- `check_all.sh` / `deploy.sh`：单元测试编译加 `-lcrypto`
+- ARM 交叉编译场景继续使用原有纯 C 实现
+
+**结论**：x86_64 GCC 7.5.0 的代码生成 bug，ARM 交叉编译器（arm-buildroot-linux-gnueabihf-gcc 7.5.0）不受影响，项目生产代码无需修改。

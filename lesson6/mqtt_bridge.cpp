@@ -599,7 +599,7 @@ static void publish_image_http(const char *event_type) {
   unlink(jpeg_path);  /* 删除临时文件 */
 
   /* 3. HTTP上传 */
-  int ret = http_post_jpeg("8.140.232.52", 9090, "/upload",
+  int ret = http_post_jpeg(mqtt_host, 9090, "/upload",
                             event_type, jpeg_data, (int)jpeg_len);
   if (ret == 0) {
     printf("Image uploaded via HTTP: %s (%ld bytes)\n",

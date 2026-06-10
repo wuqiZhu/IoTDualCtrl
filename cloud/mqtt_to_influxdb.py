@@ -40,6 +40,9 @@ MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_USER = os.environ.get("MQTT_USER", "zhuxiangbo")
 MQTT_PASS = os.environ.get("MQTT_PASS", "")
 
+# 图片服务器地址（钉钉消息中图片的URL）
+IMAGE_SERVER_URL = os.environ.get("IMAGE_SERVER_URL", "http://localhost:9090")
+
 # 订阅主题：所有需要处理的消息
 MQTT_TOPICS = [
     "device/telemetry",   # 遥测数据（事件驱动上报）
@@ -167,8 +170,7 @@ def send_alert_with_image(alert_type, level_str, ts):
     if ts:
         content += f"时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(ts)))}\n"
     if latest_smoke_image and os.path.exists(latest_smoke_image):
-        content += f"\n![现场照片](http://8.140.232.52:9090/images/{os.path.basename(latest_smoke_image)})"
-    send_dingtalk(f"🚨 告警: {alert_type}", content)
+        content += f"\n![现场照片]({IMAGE_SERVER_URL}/images/{os.path.basename(latest_smoke_image)})"    send_dingtalk(f"🚨 告警: {alert_type}", content)
 
 
 # ===== MQTT回调 =====
