@@ -289,3 +289,20 @@ auto_control_temp:  temp > 32 → 又打开
 - 新增 `shared_lib/include/rpc.h` 作为 `#define PORT 1234` 的唯一权威定义
 - 其他 3 份（rpc_server、rpc_client、lesson6）+ Qt 端改为 `#include` 引用
 - `shared.h` 清理 10 个不存在的头文件引用（error.h/log.h/config.h 实际在 lesson6/）
+
+### 十一、check_all.sh 板端运行修复
+
+**CRLF 换行符问题**：
+- `check_all.sh` / `deploy.sh` / `snapshot.sh` 在 Windows 编辑后传到 Linux，`\r` 被 shell 当作命令报 `$'\r': command not found`
+- 全部转为 LF (Unix) 换行符
+
+**rpc_client.c 缺头文件**：
+- `camera_capture` 命令使用 `time(NULL)` 但未 `#include <time.h>`，交叉编译报 `implicit declaration`
+
+**Qt .ui XML 闭合标签**：
+- `mainwindow.ui` 使用缩写格式 `<pointsize>12"/>`，Qt 4.8 的 uic 不识别，报 `Opening and ending tag mismatch`
+- 全文件 21 处改为标准格式 `<pointsize>12</pointsize>`
+
+**grep 正则兼容性**：
+- `check_all.sh` 中 `[a-zA-Z0-9_\-@]` 的 `\-` 在板端旧版 grep 报 `Invalid range end`
+- 改为 `[_@-]`（横杠放末尾）
