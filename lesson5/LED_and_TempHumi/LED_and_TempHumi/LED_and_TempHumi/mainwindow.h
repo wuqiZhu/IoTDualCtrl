@@ -22,19 +22,24 @@ public:
     QLabel *GetTempLabel();
 
 private slots:
-    void on_pushButton_clicked();
-    void on_pushButton_relay_clicked();
-    void on_pushButton_relay2_clicked();
+    void on_pushButton_led_clicked();
+    void on_pushButton_fan_clicked();
+    void on_pushButton_led_lamp_clicked();
+    void on_pushButton_camera_clicked();
+    void on_pushButton_exit_clicked();
     void refreshSensors();
     void refreshSmoke();
+    void refreshRelayStates();
+    void updateConnectionStatus(bool connected);
 
 private:
     Ui::MainWindow *ui;
-    QLabel *labelHumi;
-    QLabel *labelTemp;
-    QTimer *refreshTimer;
-    QTimer *smokeTimer;
     DHT11Thread *thread;
+    QTimer *sensorTimer;
+    QTimer *relayTimer;
+    QTimer *smokeTimer;
+
+    void setRelayStateLabel(QLabel *label, int state);
 };
 
 #endif // MAINWINDOW_H

@@ -7,242 +7,211 @@
     <x>0</x>
     <y>0</y>
     <width>900</width>
-    <height>600</height>
+    <height>620</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>智能家居监控系统</string>
   </property>
   <widget class="QWidget" name="centralwidget">
+   <!-- ===== 标题 ===== -->
    <widget class="QLabel" name="label_title">
     <property name="geometry">
      <rect>
-      <x>300</x>
-      <y>20</y>
-      <width>300</width>
+      <x>250</x>
+      <y>15</y>
+      <width>400</width>
       <height>40</height>
      </rect>
     </property>
     <property name="font">
      <font>
-      <pointsize>16</pointsize>
+      <pointsize>18</pointsize>
       <weight>75</weight>
       <bold>true</bold>
      </font>
     </property>
     <property name="text">
-     <string>智能家居监控系统</string>
+     <string>🏠 智能家居监控系统</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
     </property>
    </widget>
+
+   <!-- ===== 传感器数据面板 ===== -->
    <widget class="QGroupBox" name="groupBox_sensor">
     <property name="geometry">
      <rect>
-      <x>30</x>
-      <y>80</y>
-      <width>400</width>
-      <height>250</height>
+      <x>20</x>
+      <y>70</y>
+      <width>420</width>
+      <height>320</height>
      </rect>
     </property>
-    <property name="title">
-     <string>传感器数据</string>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+     </font>
     </property>
+    <property name="title">
+     <string>📊 传感器数据</string>
+    </property>
+
+    <!-- 湿度 -->
     <widget class="QLabel" name="label_humi_title">
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>30</y>
-       <width>80</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>湿度:</string>
-     </property>
+     <property name="geometry"><rect><x>30</x><y>40</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>🌧 湿度</string></property>
     </widget>
-    <widget class="QLabel" name="label">
-     <property name="geometry">
-      <rect>
-       <x>100</x>
-       <y>30</y>
-       <width>120</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>--</string>
-     </property>
+    <widget class="QLabel" name="value_humi">
+     <property name="geometry"><rect><x>150</x><y>40</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>14"/><weight>75</weight><bold>true</bold></font></property>
+     <property name="styleSheet"><string>color: #2196F3;</string></property>
+     <property name="text"><string>--</string></property>
     </widget>
+    <widget class="QLabel" name="label_humi_unit">
+     <property name="geometry"><rect><x>250</x><y>40</y><width>40</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>%</string></property>
+    </widget>
+
+    <!-- 温度 -->
     <widget class="QLabel" name="label_temp_title">
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>70</y>
-       <width>80</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>温度:</string>
-     </property>
+     <property name="geometry"><rect><x>30</x><y>85</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>🌡 温度</string></property>
     </widget>
-    <widget class="QLabel" name="label_2">
-     <property name="geometry">
-      <rect>
-       <x>100</x>
-       <y>70</y>
-       <width>120</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>--</string>
-     </property>
+    <widget class="QLabel" name="value_temp">
+     <property name="geometry"><rect><x>150</x><y>85</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>14"/><weight>75</weight><bold>true</bold></font></property>
+     <property name="styleSheet"><string>color: #F44336;</string></property>
+     <property name="text"><string>--</string></property>
     </widget>
+    <widget class="QLabel" name="label_temp_unit">
+     <property name="geometry"><rect><x>250</x><y>85</y><width>40</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>℃</string></property>
+    </widget>
+
+    <!-- 人体感应 -->
     <widget class="QLabel" name="label_pir_title">
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>110</y>
-       <width>80</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>人体感应:</string>
-     </property>
+     <property name="geometry"><rect><x>30</x><y>130</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>🚶 人体感应</string></property>
     </widget>
-    <widget class="QLabel" name="label_pir">
-     <property name="geometry">
-      <rect>
-       <x>100</x>
-       <y>110</y>
-       <width>120</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>--</string>
-     </property>
+    <widget class="QLabel" name="value_pir">
+     <property name="geometry"><rect><x>150</x><y>130</y><width>200</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/><weight>75</weight><bold>true</bold></font></property>
+     <property name="text"><string>--</string></property>
     </widget>
+
+    <!-- 光照 -->
     <widget class="QLabel" name="label_light_title">
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>150</y>
-       <width>80</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>光照:</string>
-     </property>
+     <property name="geometry"><rect><x>30</x><y>175</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>☀ 光照</string></property>
     </widget>
-    <widget class="QLabel" name="label_light">
-     <property name="geometry">
-      <rect>
-       <x>100</x>
-       <y>150</y>
-       <width>120</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>--</string>
-     </property>
+    <widget class="QLabel" name="value_light">
+     <property name="geometry"><rect><x>150</x><y>175</y><width>200</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/><weight>75</weight><bold>true</bold></font></property>
+     <property name="text"><string>--</string></property>
     </widget>
+
+    <!-- 烟雾 -->
     <widget class="QLabel" name="label_smoke_title">
-     <property name="geometry">
-      <rect>
-       <x>20</x>
-       <y>190</y>
-       <width>80</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>烟雾:</string>
-     </property>
+     <property name="geometry"><rect><x>30</x><y>220</y><width>100</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>🔥 烟雾</string></property>
     </widget>
-    <widget class="QLabel" name="label_smoke">
-     <property name="geometry">
-      <rect>
-       <x>100</x>
-       <y>190</y>
-       <width>120</width>
-       <height>30</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>--</string>
-     </property>
+    <widget class="QLabel" name="value_smoke">
+     <property name="geometry"><rect><x>150</x><y>220</y><width>240</width><height>35</height></rect></property>
+     <property name="font"><font><pointsize>12"/><weight>75</weight><bold>true</bold></font></property>
+     <property name="styleSheet"><string>color: #FF9800;</string></property>
+     <property name="text"><string>--</string></property>
     </widget>
    </widget>
+
+   <!-- ===== 设备控制面板 ===== -->
    <widget class="QGroupBox" name="groupBox_control">
     <property name="geometry">
      <rect>
-      <x>470</x>
-      <y>80</y>
-      <width>400</width>
-      <height>250</height>
+      <x>460</x>
+      <y>70</y>
+      <width>420</width>
+      <height>390</height>
      </rect>
     </property>
-    <property name="title">
-     <string>设备控制</string>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+     </font>
     </property>
-    <widget class="QPushButton" name="pushButton">
-     <property name="geometry">
-      <rect>
-       <x>30</x>
-       <y>40</y>
-       <width>150</width>
-       <height>60</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>LED</string>
+    <property name="title">
+     <string>🎮 设备控制</string>
+    </property>
+
+    <!-- 第1行：LED -->
+    <widget class="QPushButton" name="pushButton_led">
+     <property name="geometry"><rect><x>30</x><y>40</y><width>160</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>13"/></font></property>
+     <property name="text"><string>💡 LED (板载)</string></property>
+    </widget>
+    <widget class="QLabel" name="value_led_state">
+     <property name="geometry"><rect><x>210</x><y>40</y><width>180</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>状态: --</string></property>
+    </widget>
+
+    <!-- 第2行：风扇（继电器1） -->
+    <widget class="QPushButton" name="pushButton_fan">
+     <property name="geometry"><rect><x>30</x><y>110</y><width>160</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>13"/></font></property>
+     <property name="text"><string>🌀 风扇 (继电器1)</string></property>
+    </widget>
+    <widget class="QLabel" name="value_fan_state">
+     <property name="geometry"><rect><x>210</x><y>110</y><width>180</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>状态: --</string></property>
+    </widget>
+
+    <!-- 第3行：LED灯（继电器2） -->
+    <widget class="QPushButton" name="pushButton_led_lamp">
+     <property name="geometry"><rect><x>30</x><y>180</y><width>160</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>13"/></font></property>
+     <property name="text"><string>💡 LED灯 (继电器2)</string></property>
+    </widget>
+    <widget class="QLabel" name="value_led_lamp_state">
+     <property name="geometry"><rect><x>210</x><y>180</y><width>180</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>状态: --</string></property>
+    </widget>
+
+    <!-- 第4行：摄像头抓拍 -->
+    <widget class="QPushButton" name="pushButton_camera">
+     <property name="geometry"><rect><x>30</x><y>250</y><width>160</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>13"/></font></property>
+     <property name="text"><string>📸 摄像头抓拍</string></property>
+    </widget>
+    <widget class="QLabel" name="value_camera_result">
+     <property name="geometry"><rect><x>210</x><y>250</y><width>180</width><height>55</height></rect></property>
+     <property name="font"><font><pointsize>11"/></font></property>
+     <property name="text"><string>点击抓拍</string></property>
+     <property name="alignment">
+      <set>Qt::AlignVCenter</set>
      </property>
     </widget>
-    <widget class="QPushButton" name="pushButton_relay">
-     <property name="geometry">
-      <rect>
-       <x>220</x>
-       <y>40</y>
-       <width>150</width>
-       <height>60</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>风扇</string>
-     </property>
-    </widget>
-    <widget class="QPushButton" name="pushButton_relay2">
-     <property name="geometry">
-      <rect>
-       <x>30</x>
-       <y>130</y>
-       <width>150</width>
-       <height>60</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>LED灯</string>
-     </property>
+
+    <!-- 第5行：退出按钮 -->
+    <widget class="QPushButton" name="pushButton_exit">
+     <property name="geometry"><rect><x>30</x><y>320</y><width>160</width><height>45</height></rect></property>
+     <property name="font"><font><pointsize>12"/></font></property>
+     <property name="text"><string>🚪 退出</string></property>
     </widget>
    </widget>
   </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>900</width>
-     <height>22</height>
-    </rect>
-   </property>
-  </widget>
+
+  <!-- 状态栏 -->
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
