@@ -259,6 +259,13 @@ int rpc_relay2_read(int *value)
     return rpc_call_int_result("relay2_read", "", value);
 }
 
+int rpc_camera_capture_jpeg(const char *filename)
+{
+    char params[256];
+    snprintf(params, sizeof(params), "\"%s\"", filename ? filename : "/tmp/capture.jpg");
+    return rpc_call_no_result("camera_capture", params);
+}
+
 int RPC_Client_Init(void)
 {
     int iSocketClient;
