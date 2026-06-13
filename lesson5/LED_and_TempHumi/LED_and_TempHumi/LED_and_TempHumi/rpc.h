@@ -1,8 +1,4 @@
-#ifndef _RPC_H
-#define _RPC_H
-
-#define PORT 1234
-
-
-#endif
+/* 统一头文件：shared_lib/include/rpc.h */
+/* 注意：Qt qmake 不会自动搜索 shared_lib，用相对路径引用 */
+#include "../../../../shared_lib/include/rpc.h"
 

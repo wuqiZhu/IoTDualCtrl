@@ -28,41 +28,18 @@ extern "C" {
 /*                              模块头文件包含 */
 /* ========================================================================== */
 
-/* cJSON - JSON解析库 */
-#include "cJSON.h"
+/* 仅包含 shared_lib 实际提供的模块 */
+#include "cJSON.h"       /* JSON解析库 */
+#include "watchdog.h"    /* 软件看门狗 */
+#include "rpc.h"         /* RPC端口定义（统一入口） */
 
-/* 错误处理 */
-#include "error.h"
-
-/* 日志模块 */
-#include "log.h"
-
-/* 看门狗模块 */
-#include "watchdog.h"
-
-/* 配置管理 */
-#include "config.h"
-
-/* 数据缓存 */
-#include "data_cache.h"
-
-/* 系统监控 */
-#include "system_monitor.h"
-
-/* 安全审计 */
-#include "security_audit.h"
-
-/* 数据安全 */
-#include "crypto_utils.h"
-
-/* 内存池管理 */
-#include "memory_pool.h"
-
-/* 性能监控 */
-#include "perf_monitor.h"
-
-/* 设备发现 */
-#include "device_discovery.h"
+/*
+ * 注意：以下模块的头文件位于 lesson6/ 目录，不属于 shared_lib：
+ *   error.h / log.h / config.h / data_cache.h / system_monitor.h
+ *   security_audit.h / crypto_utils.h / memory_pool.h / perf_monitor.h
+ *   device_discovery.h
+ * 如需在外部使用这些模块，请直接包含 lesson6/ 下的对应头文件。
+ */
 
 /* ========================================================================== */
 /*                              公共工具函数 */
