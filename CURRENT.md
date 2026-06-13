@@ -232,3 +232,60 @@ auto_control_temp:  temp > 32 → 又打开
 - HTTP 上传和 MQTT 发布分离到 `image_upload_thread` 独立线程
 - 上传线程结束时自动释放资源（`pthread_detach`）
 - HTTP 失败时的 Base64 回退也在上传线程中执行，不阻塞主循环
+
+### 七、安全加固（多个文件）
+
+**OTA 命令注入修复** (`lesson6/ota_manager.c`)
+- 所有 6 处 `system()` 调用替换为 `safe_execv()`（fork + execvp）
+- 消除 shell 注入风险，参数不经过 sh 解释
+- 涉及：wget 下载、cp 备份/安装、systemctl 重启、回滚操作
+
+**HTTP 路径遍历修复** (`http_server.c` + `web_api.c`)
+- `handle_static_file()` 拒绝含 `..` 的路径
+- `api_camera_view()` 增加 `..` 检查 + 文件大小限制 10MB 防 OOM
+
+**Token 可预测修复** (`lesson6/device_auth.c`)
+- `generate_random_token()` 改用 `/dev/urandom`
+- 应急回退保留 `srand+rand` 但仅 urandom 不可用时
+
+**登录暴力破解防护** (`web_api.c`)
+- 连续 3 次登录失败后延迟 1 秒响应
+- Session 文件改为 0600 权限
+
+**popen 替换为系统 API** (`web_api.c`)
+- `popen("ls -t /tmp/camera_*.jpg")` → `opendir + readdir`
+- `popen("hostname")` → `gethostname()`
+
+### 八、更新旧版客户端（4 个文件）
+
+**rpc_client.c（CLI）** — 全面重构
+- 提取 `rpc_call_int()` 公共函数，消除 6 份重复的 send/read/parse 代码
+- 新增 `rpc_relay_read` / `rpc_relay2_read` / `rpc_camera_capture_jpeg`
+- 新增 `-s <ip>` 选项支持指定 RPC 服务器地址
+- `sprintf` → `snprintf` 消除缓冲区溢出风险
+
+**Qt 客户端** — rpc_client + mainwindow 优化
+- `rpc_client.h/cpp` 新增 `rpc_camera_capture_jpeg`
+- `Makefile` 清理无用的 jsonrpc-c/libev 库链接
+
+### 九、Qt 界面重做（3 个文件）
+
+**UI 层面**：
+- 标签名 `label`/`label_2` → `value_humi`/`value_temp` 等可读名称
+- 传感器面板添加单位标签（%/℃）
+- 控制面板显示设备真实状态（🟢已开启/🔴已关闭），从设备回读
+- 新增摄像头抓拍按钮 + 退出按钮
+- 传感器值用颜色区分（温度红/湿度蓝/烟雾橙）
+- 状态栏显示 RPC 连接状态 + 操作结果反馈（2-3 秒提示）
+
+**逻辑层面**：
+- 继电器按钮改为先读状态再翻转（从设备真实读取）
+- `refreshRelayStates()` 定时 3 秒同步继电器真实状态
+- `dht11_thread` 改为发射纯数值，由 UI 层格式化（避免单位重复）
+- 析构时等待 DHT11 线程安全退出
+
+### 十、统一 rpc.h 到 shared_lib（4 个文件）
+
+- 新增 `shared_lib/include/rpc.h` 作为 `#define PORT 1234` 的唯一权威定义
+- 其他 3 份（rpc_server、rpc_client、lesson6）+ Qt 端改为 `#include` 引用
+- `shared.h` 清理 10 个不存在的头文件引用（error.h/log.h/config.h 实际在 lesson6/）

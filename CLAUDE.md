@@ -434,15 +434,17 @@ journalctl -u mqtt_bridge -f
 
 ## 已知问题
 
-~~1. **竞态条件** — `fan_state`、`led_state` 被遥测线程和命令工作线程共享，无互斥锁保护。（✅ 已修复：2026-06-13 新增 state_mutex 保护所有读写）~~
+1. ~~**竞态条件** — `fan_state`、`led_state` 被遥测线程和命令工作线程共享，无互斥锁保护。（✅ 已修复：2026-06-13 新增 state_mutex 保护所有读写）~~
 
-~~2. **check_all.sh 误报** — grep "/sys" 会命中 "/api/system"；硬编码IP 8.140.232.52 是阿里云固定地址，属于合理硬编码。（✅ 已修复：已添加 grep -v '/api/' 排除）~~
+2. ~~**check_all.sh 误报** — grep "/sys" 会命中 "/api/system"。（✅ 已修复：已添加 grep -v '/api/' 排除）~~
 
-~~3. **单元测试编译命令过时** — cJSON 已移入 shared_lib，测试需指定 `-I../shared_lib/include ../shared_lib/src/cJSON.c`。（✅ 已修复：CLAUDE.md 和 check_all.sh 均已更新为完整命令）~~
+3. ~~**单元测试编译命令过时** — cJSON 已移入 shared_lib。（✅ 已修复：CLAUDE.md 和 check_all.sh 均已更新为完整命令）~~
 
-4. **MQTT连接稳定性** — 错误码 -4 表示TCP连接失败，有自动重连机制（5次，5秒间隔）。
+4. **MQTT连接稳定性** — -4 错误码（TCP连接失败），已优化重连逻辑（递增等待 5-30s + 断开自动检测）。偶发情况下云服务器重启可能导致短暂断连，mqtt_bridge 会自动重连并补传缓存数据。
 
-5. **共享库已抽离** — cJSON 和 watchdog 已移入 shared_lib，lesson5/lesson6 通过 Makefile 引用。
+5. **shared_lib 静态库未使用** — shared_lib/Makefile 编译 `libshared.a`，但 lesson5/6 的 Makefile 直接编译 .c 源文件而非链接 .a。功能正常，但浪费少量编译时间。
+
+6. **Qt 项目仍使用本地 cJSON** — Qt 客户端自带 `cJSON.cpp` 而非引用 shared_lib，因为 Qt 交叉编译环境路径配置与 Makefile 不一致。
 
 ## 重要设计原则
 
