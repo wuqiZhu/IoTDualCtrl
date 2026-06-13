@@ -383,6 +383,23 @@ cd lesson5/rpc_client && make clean && make
 bash check_all.sh
 ```
 
+> **Qt 客户端说明** (`lesson5/LED_and_TempHumi/`)：
+>
+> Qt 客户端使用 Qt 4.8 框架，需要独立的 qmake 交叉编译环境编译，**不支持**通过 `deploy.sh build` 或手动 `make` 编译。
+>
+> 编译方法：
+> ```bash
+> cd lesson5/LED_and_TempHumi/LED_and_TempHumi/LED_and_TempHumi
+> /path/to/qt4.8/bin/qmake LED_and_TempHumi.pro
+> make
+> ```
+>
+> `deploy.sh build` 只编译 rpc_server + rpc_client + mqtt_bridge 三个目标，
+> Qt 客户端如需部署到板端，请手动编译后复制二进制。
+>
+> 项目的主要管理界面为 **Web 端**（`http://<板子IP>:8080`），支持全部功能，
+> Qt 客户端为旧版演示工具，功能已覆盖。详见 `CLAUDE.md` 中的 Web API 章节。
+
 ### 本地测试
 
 ```bash
