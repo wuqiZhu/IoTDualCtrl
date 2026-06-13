@@ -387,7 +387,7 @@ bash check_all.sh
 
 ```bash
 # 单元测试（不依赖硬件）
-cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c -I../shared_lib/include ../shared_lib/src/cJSON.c -lm -I. && ./test && rm -f test
+cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c data_cache.c msg_queue.c crypto_utils.c memory_pool.c -I../shared_lib/include ../shared_lib/src/cJSON.c -lm -lpthread -I. -lcrypto && ./test && rm -f test
 
 # 静态分析
 cd lesson6 && make cppcheck
@@ -434,11 +434,11 @@ journalctl -u mqtt_bridge -f
 
 ## 已知问题
 
-1. **竞态条件** — `fan_state`、`led_state` 被遥测线程和命令工作线程共享，无互斥锁保护。参见 CURRENT.md 2026-06-07。
+~~1. **竞态条件** — `fan_state`、`led_state` 被遥测线程和命令工作线程共享，无互斥锁保护。（✅ 已修复：2026-06-13 新增 state_mutex 保护所有读写）~~
 
-2. **check_all.sh 误报** — grep "/sys" 会命中 "/api/system"；硬编码IP 8.140.232.52 是阿里云固定地址，属于合理硬编码。
+~~2. **check_all.sh 误报** — grep "/sys" 会命中 "/api/system"；硬编码IP 8.140.232.52 是阿里云固定地址，属于合理硬编码。（✅ 已修复：已添加 grep -v '/api/' 排除）~~
 
-3. **单元测试编译命令过时** — cJSON 已移入 shared_lib，测试需指定 `-I../shared_lib/include ../shared_lib/src/cJSON.c`。
+~~3. **单元测试编译命令过时** — cJSON 已移入 shared_lib，测试需指定 `-I../shared_lib/include ../shared_lib/src/cJSON.c`。（✅ 已修复：CLAUDE.md 和 check_all.sh 均已更新为完整命令）~~
 
 4. **MQTT连接稳定性** — 错误码 -4 表示TCP连接失败，有自动重连机制（5次，5秒间隔）。
 

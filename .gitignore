@@ -46,6 +46,7 @@ lesson5/libev/stamp-h3
 .env.production
 
 # IDE config
+.claude/
 .trae/
 .vscode/
 .idea/

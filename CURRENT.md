@@ -175,3 +175,60 @@ auto_control_temp:  temp > 32 → 又打开
 - ARM 交叉编译场景继续使用原有纯 C 实现
 
 **结论**：x86_64 GCC 7.5.0 的代码生成 bug，ARM 交叉编译器（arm-buildroot-linux-gnueabihf-gcc 7.5.0）不受影响，项目生产代码无需修改。
+
+---
+
+## 2026-06-13 开发记录
+
+### 一、清理残留文件
+
+**变更**：
+- 删除 `temp.txt`、`temp2.txt`、`temp/` 目录（临时测试文件）
+- 删除 `lesson6/test_sha256_*.c` 共 8 个 SHA-256 算法探索试验文件
+- 删除 `lesson5/rpc_server/test5.jpg`（测试图片）
+- 删除 `__pycache__/`、`.rpc_server.c.swp`（vim 交换文件）
+- 删除 jsonrpc-c 和 libev 的 `.o`/`.lo` 中间编译产物（保留源码和 `.a`/`.so`）
+- 删除 Qt 客户端（LED_and_TempHumi）的编译产物：`.o`、moc_自动生成文件、二进制
+
+### 二、分离求职自动化脚本
+
+将项目中夹杂的求职脚本迁移到独立仓库 `../find_job`：
+- `new_main.py` → `find_job/job_scraper/main.py`
+- `new_profile.json` → `find_job/profile.json`
+- `new_workflow.yml` → `find_job/.github/workflows/job-scraper.yml`
+- 从本仓库删除所有 `new_*` 文件
+
+### 三、修复竞态条件 (`lesson6/mqtt_bridge.cpp`)
+
+**问题**：`fan_state`、`led_state` 被遥测线程和命令工作线程共享，无互斥锁保护。
+
+**修复**：新增 `pthread_mutex_t state_mutex`，所有 6 处读和 7 处写操作均加锁保护：
+- **读模式**：`lock → copy → unlock`，RPC 调用在锁外执行，不阻塞 I/O
+- **写模式**：`lock → write → unlock`
+- 受保护函数：`auto_control_smoke()`、`auto_control_temp()`、`auto_control_light_pir()`、`handle_rpc_control()`
+
+### 四、修复 MQTT 断连检测 (`lesson6/mqtt_bridge.cpp`)
+
+**问题**：MQTT 断开后 `mqtt_connected` 永远不会被置 0，重连逻辑 (`mqtt_reconnect`) 永远不触发。
+
+**修复**：
+- `mqtt_publish` 失败时设置 `mqtt_connected = 0`，触发下次循环重连
+- `publish_response()`、`publish_alert()` 增加 `mqtt_connected` 检查，断线时放弃发送
+- `mqtt_reconnect()` 改为递增等待：5s → 10s → 15s → 20s → 30s（逐步退避）
+- -4 错误码（TCP 连接失败）输出中文说明
+
+### 五、文档同步更新
+
+- `CLAUDE.md`：单元测试编译命令修正为完整版（含所有源文件和 `-lpthread -lcrypto`）
+- `CLAUDE.md`：已知问题标记 3 项已修复（竞态条件、check_all.sh、测试编译命令）
+- `CURRENT.md`：本次变更记录
+
+### 六、摄像头 HTTP 上传改为异步线程 (`lesson6/mqtt_bridge.cpp`)
+
+**问题**：烟雾报警时 `publish_image_http` 在遥测线程中同步执行 HTTP POST 上传，可能阻塞 30 秒（HTTP 超时），导致遥测周期（5 秒）延迟、传感器响应不及时。
+
+**修复**：
+- 拍照 + 读文件仍在原线程执行（毫秒级完成）
+- HTTP 上传和 MQTT 发布分离到 `image_upload_thread` 独立线程
+- 上传线程结束时自动释放资源（`pthread_detach`）
+- HTTP 失败时的 Base64 回退也在上传线程中执行，不阻塞主循环

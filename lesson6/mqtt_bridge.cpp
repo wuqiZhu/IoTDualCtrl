@@ -196,6 +196,9 @@ static int fan_state = 0;
 /** @brief LED灯状态 (0=关闭, 1=开启) */
 static int led_state = 0;
 
+/** @brief 状态变量互斥锁（保护 fan_state / led_state） */
+static pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /** @brief PIR无人计时起点 */
 static time_t last_pir_off_time = 0;
 
@@ -326,6 +329,9 @@ static int load_mqtt_config(void) {
  */
 static void publish_response(const char *method, int success,
                              const char *extra_json) {
+  if (!client || !mqtt_connected) {
+    return;
+  }
   cJSON *root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "method", method);
   cJSON_AddNumberToObject(root, "success", success);
@@ -358,6 +364,10 @@ static void publish_response(const char *method, int success,
  * @param level 告警级别
  */
 static void publish_alert(const char *type, int level) {
+  if (!client || !mqtt_connected) {
+    printf("MQTT not connected, alert %s dropped\n", type ? type : "?");
+    return;
+  }
   cJSON *root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "method", "smoke_alert");
   cJSON_AddStringToObject(root, "type", type);
@@ -550,14 +560,66 @@ static int http_post_jpeg(const char *host, int port, const char *path,
 static void publish_image(const char *event_type);
 
 /**
+ * @brief 图片上传任务结构（传递给上传线程）
+ */
+typedef struct {
+  char event_type[32];
+  unsigned char *jpeg_data;
+  long jpeg_len;
+} image_upload_task_t;
+
+/**
+ * @brief 图片上传线程函数（异步执行，不阻塞遥测线程）
+ * @param arg image_upload_task_t 指针（用完释放）
+ * @return NULL
+ *
+ * 在独立线程中执行 HTTP 上传或 Base64+MQTT 回退，
+ * 避免 HTTP 超时（最坏 30 秒）阻塞遥测主循环。
+ */
+static void *image_upload_thread(void *arg) {
+  image_upload_task_t *task = (image_upload_task_t *)arg;
+  if (!task) return NULL;
+
+  /* 先尝试 HTTP 上传 */
+  int ret = http_post_jpeg(mqtt_host, 9090, "/upload",
+                            task->event_type,
+                            task->jpeg_data, (int)task->jpeg_len);
+  if (ret == 0) {
+    printf("Image uploaded via HTTP: %s (%ld bytes)\n",
+           task->event_type, task->jpeg_len);
+    /* 成功：发一条小MQTT通知 */
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "method", "image_uploaded");
+    cJSON_AddStringToObject(root, "event", task->event_type);
+    cJSON_AddNumberToObject(root, "timestamp", time(NULL));
+    char *payload = cJSON_PrintUnformatted(root);
+    if (payload) {
+      mqtt_message_t msg;
+      memset(&msg, 0, sizeof(msg));
+      msg.payload = (void *)payload;
+      msg.payloadlen = strlen(payload);
+      msg.qos = QOS1;
+      (void)mqtt_publish(client, ALERT_TOPIC, &msg);
+      free(payload);
+    }
+    cJSON_Delete(root);
+  } else {
+    /* HTTP 失败，回退到 base64+MQTT */
+    printf("HTTP upload failed, fallback to MQTT base64...\n");
+    publish_image(task->event_type);
+  }
+
+  free(task->jpeg_data);
+  free(task);
+  return NULL;
+}
+
+/**
  * @brief 通过HTTP上传图片+MQTT小通知（替代原MQTT传base64方案）
  * @param event_type 事件类型
  *
- * 流程：
- * 1. 拍照并保存到临时文件
- * 2. HTTP POST上传JPEG到云端
- * 3. 成功 → 发一条小MQTT通知（不带图片数据）
- * 4. 失败 → 回退到原base64+MQTT方案
+ * 不再阻塞遥测线程——拍照+读文件在主线程完成，
+ * HTTP上传和MQTT发布在独立线程中异步执行。
  */
 static void publish_image_http(const char *event_type) {
   char jpeg_path[64];
@@ -569,7 +631,7 @@ static void publish_image_http(const char *event_type) {
   snprintf(jpeg_path, sizeof(jpeg_path), "/tmp/iot_http_%s.jpg",
            event_type ? event_type : "unknown");
 
-  /* 1. 通过RPC拍照（避免直接操作摄像头硬件） */
+  /* 1. 通过RPC拍照 */
   if (rpc_camera_capture_jpeg(jpeg_path) != 0) {
     printf("HTTP image: RPC camera capture failed\n");
     return;
@@ -596,38 +658,32 @@ static void publish_image_http(const char *event_type) {
   }
   fread(jpeg_data, 1, jpeg_len, fp);
   fclose(fp);
-  unlink(jpeg_path);  /* 删除临时文件 */
+  unlink(jpeg_path);
 
-  /* 3. HTTP上传 */
-  int ret = http_post_jpeg(mqtt_host, 9090, "/upload",
-                            event_type, jpeg_data, (int)jpeg_len);
-  if (ret == 0) {
-    printf("Image uploaded via HTTP: %s (%ld bytes)\n",
-           event_type, jpeg_len);
-    /* 成功：发一条小MQTT通知（仅事件信息，无图片数据） */
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "method", "image_uploaded");
-    cJSON_AddStringToObject(root, "event", event_type);
-    cJSON_AddNumberToObject(root, "timestamp", time(NULL));
-    char *payload = cJSON_PrintUnformatted(root);
-    if (payload) {
-      mqtt_message_t msg;
-      memset(&msg, 0, sizeof(msg));
-      msg.payload = (void *)payload;
-      msg.payloadlen = strlen(payload);
-      msg.qos = QOS1;
-      (void)mqtt_publish(client, ALERT_TOPIC, &msg);
-      free(payload);
-    }
-    cJSON_Delete(root);
-  } else {
-    printf("HTTP upload failed, fallback to MQTT base64...\n");
+  /* 3. 启动异步上传线程（拍照和读文件已完成，不阻塞主线程） */
+  image_upload_task_t *task = (image_upload_task_t *)malloc(sizeof(*task));
+  if (!task) {
+    printf("HTTP image: task malloc failed\n");
     free(jpeg_data);
-    publish_image(event_type);
     return;
   }
 
-  free(jpeg_data);
+  strncpy(task->event_type, event_type ? event_type : "unknown",
+          sizeof(task->event_type) - 1);
+  task->event_type[sizeof(task->event_type) - 1] = '\0';
+  task->jpeg_data = jpeg_data;
+  task->jpeg_len = jpeg_len;
+
+  pthread_t upload_tid;
+  if (pthread_create(&upload_tid, NULL, image_upload_thread, task) != 0) {
+    printf("HTTP image: failed to create upload thread\n");
+    free(jpeg_data);
+    free(task);
+    return;
+  }
+  pthread_detach(upload_tid);
+  printf("Image upload thread started: %s (%ld bytes)\n",
+         event_type ? event_type : "?", jpeg_len);
 }
 
 static void publish_image(const char *event_type) {
@@ -902,7 +958,8 @@ static void publish_telemetry(void) {
           if (mqtt_publish(client, TELEMETRY_TOPIC, &cached_msg) == 0) {
             printf("Cached telemetry sent: %s\n", cached_data);
           } else {
-            /* 发送失败，重新缓存 */
+            /* 发送失败，标记断开并重新缓存 */
+            mqtt_connected = 0;
             data_cache_push(cached_data, cached_len);
             break;
           }
@@ -919,8 +976,9 @@ static void publish_telemetry(void) {
         if (mqtt_publish(client, TELEMETRY_TOPIC, &msg) == 0) {
           printf("Telemetry published: %s\n", payload);
         } else {
-          /* 发送失败，缓存数据 */
-          printf("MQTT publish failed, caching data\n");
+          /* 发送失败，标记断开并缓存数据 */
+          printf("MQTT publish failed, connection may be lost\n");
+          mqtt_connected = 0;
           data_cache_push(payload, strlen(payload));
         }
       } else {
@@ -995,9 +1053,14 @@ static void auto_control_smoke(int smoke_digital, time_t *smoke_fan_until,
     }
 
     /* 检测到烟雾，开启风扇 */
-    if (!fan_state) {
+    pthread_mutex_lock(&state_mutex);
+    int fan_off = !fan_state;
+    pthread_mutex_unlock(&state_mutex);
+    if (fan_off) {
       if (rpc_relay_control(1) == 0) {
+        pthread_mutex_lock(&state_mutex);
         fan_state = 1;
+        pthread_mutex_unlock(&state_mutex);
         printf("Auto: Fan ON due to smoke alert\n");
       }
     }
@@ -1028,12 +1091,17 @@ static void auto_control_smoke(int smoke_digital, time_t *smoke_fan_until,
      * 2. 检查当前温度——如果温度仍超过高温阈值，不关风扇，
      *    交给 auto_control_temp 统一管理，避免继电器跳匝
      * 3. 处理完后重置 smoke_fan_until = 0，防止下次循环重复触发 */
-    if (fan_state && *smoke_fan_until > 0 && now >= *smoke_fan_until) {
+    pthread_mutex_lock(&state_mutex);
+    int fan_is_on = fan_state;
+    pthread_mutex_unlock(&state_mutex);
+    if (fan_is_on && *smoke_fan_until > 0 && now >= *smoke_fan_until) {
       /* 温度仍然偏高时，不介入，让温度联动自行管理 */
       if (g_sensor_cache.temp < temp_high_threshold ||
           g_sensor_cache.temp == -1) {
         if (rpc_relay_control(0) == 0) {
+          pthread_mutex_lock(&state_mutex);
           fan_state = 0;
+          pthread_mutex_unlock(&state_mutex);
           printf("Auto: Fan OFF, smoke cleared (temp=%d°C)\n",
                  g_sensor_cache.temp);
         }
@@ -1070,15 +1138,24 @@ static void auto_control_temp(int temp, int smoke_digital,
     return;
   }
 
-  /* 温度控制逻辑 */
-  if (temp > temp_high_threshold && !fan_state) {
+  /* 温度控制逻辑（先读状态再决策，避免竞态） */
+  pthread_mutex_lock(&state_mutex);
+  int need_fan_on = (temp > temp_high_threshold && !fan_state);
+  int need_fan_off = (temp < temp_low_threshold && fan_state);
+  pthread_mutex_unlock(&state_mutex);
+
+  if (need_fan_on) {
     if (rpc_relay_control(1) == 0) {
+      pthread_mutex_lock(&state_mutex);
       fan_state = 1;
+      pthread_mutex_unlock(&state_mutex);
       printf("Auto: Fan ON (temp=%d°C > %d)\n", temp, temp_high_threshold);
     }
-  } else if (temp < temp_low_threshold && fan_state) {
+  } else if (need_fan_off) {
     if (rpc_relay_control(0) == 0) {
+      pthread_mutex_lock(&state_mutex);
       fan_state = 0;
+      pthread_mutex_unlock(&state_mutex);
       printf("Auto: Fan OFF (temp=%d°C < %d)\n", temp, temp_low_threshold);
     }
   }
@@ -1102,9 +1179,14 @@ static void auto_control_light_pir(int light, int pir) {
 
   if (light == 1 && pir == 1) {
     /* 天黑且有人，开启LED */
-    if (!led_state) {
+    pthread_mutex_lock(&state_mutex);
+    int led_off = !led_state;
+    pthread_mutex_unlock(&state_mutex);
+    if (led_off) {
       if (rpc_relay2_control(1) == 0) {
+        pthread_mutex_lock(&state_mutex);
         led_state = 1;
+        pthread_mutex_unlock(&state_mutex);
         printf("Auto: LED ON (dark & motion detected)\n");
       }
     }
@@ -1115,9 +1197,14 @@ static void auto_control_light_pir(int light, int pir) {
       last_pir_off_time = now;
     }
     /* 延时关闭LED */
-    if (led_state && (now - last_pir_off_time) >= PIR_OFF_DELAY) {
+    pthread_mutex_lock(&state_mutex);
+    int led_on = led_state;
+    pthread_mutex_unlock(&state_mutex);
+    if (led_on && (now - last_pir_off_time) >= PIR_OFF_DELAY) {
       if (rpc_relay2_control(0) == 0) {
+        pthread_mutex_lock(&state_mutex);
         led_state = 0;
+        pthread_mutex_unlock(&state_mutex);
         printf("Auto: LED OFF (no motion for %d seconds)\n", PIR_OFF_DELAY);
       }
     }
@@ -1170,8 +1257,11 @@ static int mqtt_reconnect(void) {
   int err;
 
   for (int i = 0; i < MQTT_RECONNECT_MAX_RETRIES; i++) {
-    printf("MQTT reconnecting... attempt %d/%d\n", i + 1,
-           MQTT_RECONNECT_MAX_RETRIES);
+    int delay = MQTT_RECONNECT_DELAY * (i + 1); /* 递增等待：5s, 10s, 15s... */
+    if (delay > 30) delay = 30;
+
+    printf("MQTT reconnecting... attempt %d/%d (waiting %ds)\n", i + 1,
+           MQTT_RECONNECT_MAX_RETRIES, delay);
 
     err = mqtt_connect(client);
     if (err == 0) {
@@ -1188,9 +1278,12 @@ static int mqtt_reconnect(void) {
       return 0;
     }
 
-    printf("mqtt_connect failed: %d, retrying in %d seconds...\n", err,
-           MQTT_RECONNECT_DELAY);
-    sleep(MQTT_RECONNECT_DELAY);
+    if (err == -4) {
+      printf("TCP connection failed (-4): check network or MQTT broker status\n");
+    } else {
+      printf("mqtt_connect failed: %d (see mqttclient error codes)\n", err);
+    }
+    sleep(delay);
   }
 
   printf("MQTT reconnect failed after %d attempts\n",
@@ -1282,7 +1375,9 @@ static void handle_rpc_control(const char *method, cJSON *params_obj,
     if (on && cJSON_IsNumber(on)) {
       int ret = rpc_func(on->valueint);
       if (ret == 0 && state) {
+        pthread_mutex_lock(&state_mutex);
         *state = on->valueint;
+        pthread_mutex_unlock(&state_mutex);
       }
       publish_response(method, (ret == 0) ? 1 : 0, NULL);
     } else {
