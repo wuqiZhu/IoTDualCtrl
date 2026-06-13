@@ -66,12 +66,25 @@ static void generate_random_token(char *token, int size) {
   static const char charset[] =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   int len = size - 1;
+  unsigned char rand_bytes[64];
 
-  srand((unsigned int)(time(NULL) ^ getpid()));
-
-  for (int i = 0; i < len; i++) {
-    token[i] = charset[rand() % (sizeof(charset) - 1)];
+  /* 优先从 /dev/urandom 读取安全随机数 */
+  FILE *urandom = fopen("/dev/urandom", "r");
+  if (urandom) {
+    size_t read_len = fread(rand_bytes, 1, sizeof(rand_bytes), urandom);
+    fclose(urandom);
+    if (read_len == sizeof(rand_bytes)) {
+      for (int i = 0; i < len; i++)
+        token[i] = charset[rand_bytes[i % read_len] % (sizeof(charset) - 1)];
+      token[len] = '\0';
+      return;
+    }
   }
+
+  /* 应急回退：/dev/urandom 不可用时 */
+  srand((unsigned int)(time(NULL) ^ getpid()));
+  for (int i = 0; i < len; i++)
+    token[i] = charset[rand() % (sizeof(charset) - 1)];
   token[len] = '\0';
 }
 
@@ -115,8 +128,16 @@ devauth_error_t devauth_get_device_id(char *device_id, int size) {
     strncpy(hostname, "unknown", sizeof(hostname));
   }
 
-  srand((unsigned int)(time(NULL) ^ getpid()));
-  snprintf(device_id, size, "%s-%08X", hostname, (unsigned int)rand());
+  unsigned int random_suffix;
+  FILE *urandom = fopen("/dev/urandom", "r");
+  if (urandom) {
+    fread(&random_suffix, sizeof(random_suffix), 1, urandom);
+    fclose(urandom);
+  } else {
+    srand((unsigned int)(time(NULL) ^ getpid()));
+    random_suffix = (unsigned int)rand();
+  }
+  snprintf(device_id, size, "%s-%08X", hostname, random_suffix);
 
   return DEVAUTH_OK;
 }

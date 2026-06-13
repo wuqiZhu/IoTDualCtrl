@@ -16,8 +16,34 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+/* ========================================================================== */
+/*                              内部工具函数 */
+/* ========================================================================== */
+
+/**
+ * @brief 安全执行外部命令（无shell注入风险）
+ * @param argv NULL结尾的参数数组（argv[0]为程序名）
+ * @return 进程退出码，0成功，非0失败，-1表示执行失败
+ *
+ * 使用 fork+execvp 替代 system()，避免 shell 解释器介入，
+ * 消除参数中的 shell 元字符注入风险。
+ */
+static int safe_execv(char *const argv[]) {
+  pid_t pid = fork();
+  if (pid == -1) return -1;
+  if (pid == 0) {
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  int status;
+  waitpid(pid, &status, 0);
+  if (WIFEXITED(status)) return WEXITSTATUS(status);
+  return -1;
+}
 
 /* ========================================================================== */
 /*                              内部变量 */
@@ -136,12 +162,12 @@ static int calculate_sha256(const char *file_path, char *sha256_out) {
  * 使用wget下载固件，适用于嵌入式Linux环境（无需curl库）。
  */
 static int download_firmware(const char *url, const char *output_path) {
-  char cmd[OTA_URL_MAX_LEN + 128];
-  snprintf(cmd, sizeof(cmd), "wget -q -O %s '%s' 2>/dev/null", output_path, url);
+  char *const argv[] = {"wget", "-q", "-O", (char *)output_path,
+                        (char *)url, NULL};
 
-  int ret = system(cmd);
+  int ret = safe_execv(argv);
   if (ret != 0) {
-    printf("OTA: Download failed from %s\n", url);
+    printf("OTA: Download failed from %s (ret=%d)\n", url, ret);
     return -1;
   }
 
@@ -194,13 +220,11 @@ static int verify_checksum(const char *file_path, const char *expected_checksum,
  * @return 0成功, -1失败
  */
 static int backup_current_firmware(void) {
-  char cmd[512];
-  snprintf(cmd, sizeof(cmd), "cp -f %s %s 2>/dev/null", OTA_CURRENT_PATH,
-           OTA_BACKUP_PATH);
+  char *const argv[] = {"cp", "-f", OTA_CURRENT_PATH, OTA_BACKUP_PATH, NULL};
 
-  int ret = system(cmd);
+  int ret = safe_execv(argv);
   if (ret != 0) {
-    printf("OTA: Backup failed\n");
+    printf("OTA: Backup failed (ret=%d)\n", ret);
     return -1;
   }
 
@@ -213,13 +237,16 @@ static int backup_current_firmware(void) {
  * @return 0成功, -1失败
  */
 static int install_firmware(void) {
-  char cmd[512];
-  snprintf(cmd, sizeof(cmd), "cp -f %s %s && chmod +x %s", OTA_DOWNLOAD_PATH,
-           OTA_CURRENT_PATH, OTA_CURRENT_PATH);
+  char *const cp_argv[] = {"cp", "-f", OTA_DOWNLOAD_PATH,
+                           OTA_CURRENT_PATH, NULL};
+  if (safe_execv(cp_argv) != 0) {
+    printf("OTA: cp failed during installation\n");
+    return -1;
+  }
 
-  int ret = system(cmd);
-  if (ret != 0) {
-    printf("OTA: Installation failed\n");
+  char *const chmod_argv[] = {"chmod", "+x", OTA_CURRENT_PATH, NULL};
+  if (safe_execv(chmod_argv) != 0) {
+    printf("OTA: chmod failed during installation\n");
     return -1;
   }
 
@@ -239,7 +266,10 @@ static void restart_service(void) {
   save_ota_state();
 
   /* 重启mqtt_bridge服务 */
-  system("systemctl restart mqtt_bridge &");
+  {
+    char *const argv[] = {"systemctl", "restart", "mqtt_bridge", NULL};
+    safe_execv(argv);
+  }
 }
 
 /**
@@ -328,9 +358,11 @@ static void *ota_upgrade_thread(void *arg) {
   if (install_firmware() != 0) {
     printf("OTA: Installation failed, rolling back...\n");
     /* 回滚 */
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cp -f %s %s", OTA_BACKUP_PATH, OTA_CURRENT_PATH);
-    system(cmd);
+    {
+      char *const argv[] = {"cp", "-f", OTA_BACKUP_PATH,
+                            OTA_CURRENT_PATH, NULL};
+      safe_execv(argv);
+    }
 
     pthread_mutex_lock(&ota_mutex);
     ota_status.state = OTA_STATE_FAILED;
@@ -455,18 +487,22 @@ ota_error_t ota_rollback(void) {
   pthread_mutex_unlock(&ota_mutex);
 
   /* 恢复备份 */
-  char cmd[512];
-  snprintf(cmd, sizeof(cmd), "cp -f %s %s && chmod +x %s", OTA_BACKUP_PATH,
-           OTA_CURRENT_PATH, OTA_CURRENT_PATH);
-
-  int ret = system(cmd);
-  if (ret != 0) {
-    pthread_mutex_lock(&ota_mutex);
-    ota_status.state = OTA_STATE_FAILED;
-    strncpy(ota_status.error_msg, "Rollback failed", sizeof(ota_status.error_msg) - 1);
-    save_ota_state();
-    pthread_mutex_unlock(&ota_mutex);
-    return OTA_ERROR_ROLLBACK;
+  {
+    char *const cp_argv[] = {"cp", "-f", OTA_BACKUP_PATH,
+                             OTA_CURRENT_PATH, NULL};
+    if (safe_execv(cp_argv) != 0) {
+      pthread_mutex_lock(&ota_mutex);
+      ota_status.state = OTA_STATE_FAILED;
+      strncpy(ota_status.error_msg, "Rollback failed",
+              sizeof(ota_status.error_msg) - 1);
+      save_ota_state();
+      pthread_mutex_unlock(&ota_mutex);
+      return OTA_ERROR_ROLLBACK;
+    }
+  }
+  {
+    char *const chmod_argv[] = {"chmod", "+x", OTA_CURRENT_PATH, NULL};
+    safe_execv(chmod_argv);
   }
 
   pthread_mutex_lock(&ota_mutex);
