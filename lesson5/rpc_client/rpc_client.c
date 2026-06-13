@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <time.h>
 #include "cJSON.h"
 #include "rpc.h"
 
