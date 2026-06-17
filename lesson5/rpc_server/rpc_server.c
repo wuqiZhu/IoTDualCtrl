@@ -355,6 +355,8 @@ int RPC_Server_Init(void) {
   jrpc_register_procedure(&my_server, server_relay2_read, "relay2_read", NULL);
   jrpc_register_procedure(&my_server, server_camera_capture_jpeg,
                           "camera_capture_jpeg", NULL);
+  jrpc_register_procedure(&my_server, server_camera_capture_jpeg,
+                          "camera_capture", NULL);  /* 旧版客户端兼容 */
 
   printf("RPC server started, listening on port %d\n", PORT);
 
