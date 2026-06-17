@@ -170,7 +170,8 @@ def send_alert_with_image(alert_type, level_str, ts):
     if ts:
         content += f"时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(int(ts)))}\n"
     if latest_smoke_image and os.path.exists(latest_smoke_image):
-        content += f"\n![现场照片]({IMAGE_SERVER_URL}/images/{os.path.basename(latest_smoke_image)})"    send_dingtalk(f"🚨 告警: {alert_type}", content)
+        content += f"\n![现场照片]({IMAGE_SERVER_URL}/images/{os.path.basename(latest_smoke_image)})"
+    send_dingtalk(f"🚨 告警: {alert_type}", content)
 
 
 # ===== MQTT回调 =====

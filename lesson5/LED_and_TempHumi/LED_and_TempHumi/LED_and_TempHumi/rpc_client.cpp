@@ -263,7 +263,7 @@ int rpc_camera_capture_jpeg(const char *filename)
 {
     char params[256];
     snprintf(params, sizeof(params), "\"%s\"", filename ? filename : "/tmp/capture.jpg");
-    return rpc_call_no_result("camera_capture", params);
+    return rpc_call_no_result("camera_capture_jpeg", params);
 }
 
 int RPC_Client_Init(void)
