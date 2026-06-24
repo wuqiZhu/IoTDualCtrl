@@ -45,8 +45,10 @@ lesson5/libev/stamp-h3
 .env.local
 .env.production
 
-# IDE config
+# Claude Code workspace
 .claude/
+
+# IDE config
 .trae/
 .vscode/
 .idea/
@@ -60,12 +62,23 @@ Thumbs.db
 
 # Debug / temp files (not committed)
 temp.txt
+temp*
+*.txt
+*.yml
+*.jpg
 temp/
 *.png
+
+# Python scratch files
+new_*.py
+new_*.json
 
 # Personal documents (NOT for public repo)
 我的简历.docx
 我的简历.pdf
+*简历*.docx
+*简历*.pdf
+12.html
 CSDN_文章_*.md
 
 # Debug test files
