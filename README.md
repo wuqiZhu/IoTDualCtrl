@@ -1,118 +1,297 @@
-# 🏠 智能物联网环境监控系统
-
-> **基于 NXP i.MX6ULL ARM Cortex-A7 的嵌入式物联网全栈项目**  
-> 五层架构 · 7×24 稳定运行 · 从驱动写到云端
-
-<div align="center">
-
-[![C](https://img.shields.io/badge/language-C/C++-00599C?style=flat-square&logo=c)](https://github.com/wuqiZhu/IoTDualCtrl)
-[![Platform](https://img.shields.io/badge/platform-ARM_Linux-5391FE?style=flat-square&logo=arm)](https://github.com/wuqiZhu/IoTDualCtrl)
-[![MQTT](https://img.shields.io/badge/protocol-MQTT-660066?style=flat-square&logo=mqtt)](https://github.com/wuqiZhu/IoTDualCtrl)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-
-</div>
-
----
-
-## 📋 项目简介
-
-本项目是一个完整的嵌入式物联网智能环境监控系统，基于 **NXP i.MX6ULL** 平台，采用 **五层分层架构**：
-
-```
-┌──────────────────────────────────────┐
-│         云端层 (InfluxDB/Grafana)      │
-├──────────────────────────────────────┤
-│      应用客户端层 (Web/MQTT/RPC)        │
-├──────────────────────────────────────┤
-│        RPC服务层 (JSON-RPC over TCP)   │
-├──────────────────────────────────────┤
-│      HAL硬件抽象层 (接口统一封装)        │
-├──────────────────────────────────────┤
-│        内核驱动层 (GPIO/ADC/V4L2)      │
-└──────────────────────────────────────┘
-         i.MX6ULL ARM Cortex-A7
-```
-
-**核心能力：**
-- 🔌 接入 **6+ 种传感器/执行器**（温湿度、烟雾、人体红外、光敏、继电器、LED）
-- 📷 **USB 摄像头** V4L2 驱动，烟雾报警自动抓拍上传钉钉
-- 🌐 **Web 管理界面**（HTTP 8080），15+ REST API 端点
-- ☁️ **MQTT 云端**上报，InfluxDB + Grafana 可视化
-- 🤖 **智能边缘控制**：3 级优先级自动联动（烟雾 > 温度 > 光照+PIR）
-- 🔒 **安全体系**：设备认证、安全审计、数据脱敏、OTA 升级
-- ⏱ **7×24 小时**稳定运行，断网缓存自动重传
+<p align="center">
+  <h1 align="center">🏠 智能物联网环境监控系统</h1>
+  <p align="center">
+    NXP i.MX6ULL · 驱动到云端全栈 · 边缘自治 + 云端协同
+  </p>
+  <p align="center">
+    <a href="https://github.com/wuqiZhu/IoTDualCtrl"><img src="https://img.shields.io/badge/language-C/C++-00599C?style=flat-square&logo=c" alt="C/C++"></a>
+    <a href="https://github.com/wuqiZhu/IoTDualCtrl"><img src="https://img.shields.io/badge/platform-ARM%20Linux-5391FE?style=flat-square&logo=arm" alt="ARM Linux"></a>
+    <a href="https://github.com/wuqiZhu/IoTDualCtrl"><img src="https://img.shields.io/badge/protocol-MQTT-660066?style=flat-square" alt="MQTT"></a>
+    <a href="https://github.com/wuqiZhu/IoTDualCtrl"><img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT"></a>
+    <a href="https://github.com/wuqiZhu/IoTDualCtrl"><img src="https://img.shields.io/badge/code%20size-11000%2B%20lines-blue?style=flat-square" alt="11000+ lines"></a>
+    <a href="https://github.com/wuqiZhu/IoTDualCtrl"><img src="https://img.shields.io/badge/tests-33%20passing-brightgreen?style=flat-square" alt="33 tests"></a>
+  </p>
+</p>
 
 ---
 
-## 🖼️ 系统架构图
+## 🎯 项目概览
+
+> **一套在 ARM Linux 开发板上运行的 IoT 环境监控系统。传感器采集 → 边缘智能决策 → 云端存储告警，全链路闭环。**
+
+适用于智能家居、小型机房、仓库等需**无人值守环境监控**的场景：
+- 烟雾泄露 → 自动排风 + 拍照取证 + 钉钉告警
+- 温度超标 → 自动散热，带滞回防止继电器频繁跳闸
+- 天黑有人 → 自动开灯，人走延迟关灯
+- 网络中断 → 本地控制不中断，恢复后自动补传数据
+
+**📊 关键指标**
+
+| 指标 | 实测值 |
+|------|--------|
+| 端到端控制响应延迟 | **≤85ms** |
+| 图片上传成功率 | **99.6%**（HTTP 双通道保障） |
+| 钉钉告警图片送达延迟 | **<1.2s** |
+| 继电器误动作率 | **≤1次/天**（优化前 15次，降低 92%） |
+| 传感器故障自恢复时间 | **≤60s** |
+| 无人值守稳定性 | **7×24h** 压力测试通过 |
+| 代码规模 | **11,000+ 行** C/C++ |
+| 自动化测试 | **33 个用例**，覆盖 6 个核心模块 |
+
+> 💡 本项目基于深圳酷宅科技（易微联 eWeLink）实习期间的硬件开发经验，**独立延申**至架构设计、通信协议栈、云端部署，形成完整全栈 IoT 系统。
+
+---
+
+## 🏗 系统架构
+
+### 五层分层设计
+
+每一层职责清晰，**换平台只需重写 HAL 层**：
+
+```mermaid
+graph TB
+    subgraph "硬件层"
+        DHT11[DHT11 温湿度]
+        PIR[PIR 人体红外]
+        SMOKE[烟雾传感器 MQ-2]
+        LIGHT[光敏电阻 ADC]
+        CAM[USB 摄像头 V4L2]
+        LED[板载 LED]
+        RELAY1[继电器1 风扇]
+        RELAY2[继电器2 LED灯]
+    end
+
+    subgraph "内核驱动层"
+        DRV_DHT[/dev/mydht11]
+        DRV_LED[/dev/100ask_led]
+        SYSFS[sysfs GPIO/ADC]
+        VIDEO[/dev/video1]
+    end
+
+    subgraph "HAL 硬件抽象层"
+        HAL[hal.c ~735行<br>GPIO/ADC/传感器封装<br>滤波 · 防抖 · 故障恢复]
+    end
+
+    subgraph "RPC 服务层 TCP:1234"
+        RPC[JSON-RPC over TCP<br>libev + jsonrpc-c<br>10 个 RPC 方法]
+        HTTP[HTTP Server :8080<br>20+ REST API]
+        WEB[Web 管理前端]
+    end
+
+    subgraph "应用客户端层"
+        MQTT_BRIDGE[MQTT Bridge<br>4线程 · 事件驱动 · 边缘控制]
+        CLI[命令行 rpc_client]
+    end
+
+    subgraph "云端层 阿里云 ECS"
+        MQTT_BROKER[Mosquitto MQTT Broker]
+        INFLUXDB[(InfluxDB 时序数据库)]
+        GRAFANA[Grafana 可视化仪表板]
+        DINGTALK[钉钉机器人告警]
+    end
+
+    DHT11 --> DRV_DHT
+    PIR --> SYSFS
+    SMOKE --> SYSFS
+    LIGHT --> SYSFS
+    CAM --> VIDEO
+    LED --> DRV_LED
+    RELAY1 --> SYSFS
+    RELAY2 --> SYSFS
+
+    DRV_DHT --> HAL
+    DRV_LED --> HAL
+    SYSFS --> HAL
+    VIDEO --> HAL
+
+    HAL --> RPC
+    RPC --> HTTP
+    HTTP --> WEB
+
+    RPC --> MQTT_BRIDGE
+    MQTT_BRIDGE --> CLI
+
+    MQTT_BRIDGE <--> MQTT_BROKER
+    MQTT_BROKER --> INFLUXDB
+    INFLUXDB --> GRAFANA
+    MQTT_BROKER --> DINGTALK
+
+    style HAL fill:#e3f2fd,stroke:#1565c0
+    style RPC fill:#e8f5e9,stroke:#2e7d32
+    style HTTP fill:#e8f5e9,stroke:#2e7d32
+    style MQTT_BRIDGE fill:#fff3e0,stroke:#e65100
+    style INFLUXDB fill:#f3e5f5,stroke:#7b1fa2
+```
+
+### 数据流
 
 ```
-硬件外设 → 内核驱动 → HAL抽象层 → RPC服务(TCP:1234)
-                                   ├──→ HTTP服务器(Web:8080)
-                                   ├──→ MQTT Bridge → 阿里云
-                                   │                  ├─ InfluxDB + Grafana
-                                   │                  └─ 钉钉告警(含图片)
-                                   └──→ RPC Client(命令行/Qt)
+上行（遥测）:
+  传感器 → 内核驱动 → HAL → RPC → MQTT Bridge → MQTT → InfluxDB → Grafana
+  
+下行（控制）:
+  云端指令 → MQTT → MQTT Bridge → RPC → HAL → GPIO → 执行器
+  
+本地（边缘自治）:
+  MQTT Bridge 内部 5 秒周期 → 读取传感器 → 判断阈值 → RPC 控制 → MQTT 告警
+
+图片（双通道保障）:
+  烟雾报警 → 摄像头抓拍 ─┬─ HTTP POST :9090 优先（1.2s送达） ─→ 云端保存 + 钉钉
+                         └─ MQTT Base64 备选 ──→ 云端解码 + 钉钉
 ```
 
 ---
 
-## 🔧 硬件清单
+## 🔌 硬件清单
 
-| 外设 | 接口 | 说明 |
-|------|------|------|
-| LED (板载) | GPIO131 | /dev/100ask_led |
-| DHT11 温湿度 | GPIO115 | 单总线协议，中断+定时器解析 |
-| PIR 人体红外 | GPIO116 | 数字输入 |
-| 烟雾传感器 DO | GPIO117 | 数字输入 |
-| 继电器1 (风扇) | GPIO118 | 数字输出 |
-| 继电器2 (LED灯) | GPIO119 | 数字输出 |
-| 光敏电阻 ADC | ADC 通道3 | /sys/bus/iio |
-| USB 摄像头 | /dev/video1 | V4L2 MJPEG 640×480 |
+| 外设 | 接口 | 方向 | 说明 |
+|------|------|------|------|
+| 板载 LED | GPIO131 (`/dev/100ask_led`) | 输出 | 状态指示 |
+| DHT11 温湿度 | GPIO115 (`/dev/mydht11`) | 双向 | 单总线协议，中断+定时器解析 |
+| PIR 人体红外 | GPIO116 (sysfs) | 输入 | 0=无人, 1=有人 |
+| 烟雾传感器 DO | GPIO117 (sysfs) | 输入 | 0=报警, 1=正常 |
+| 继电器1 (风扇) | GPIO118 (sysfs) | 输出 | 温度/烟雾联动 |
+| 继电器2 (LED灯) | GPIO119 (sysfs) | 输出 | 光照+PIR联动 |
+| 光敏电阻 ADC | ADC 通道3 (IIO) | 输入 | 原始值 0~4095，阈值2000 |
+| USB 摄像头 | `/dev/video1` | V4L2 | MJPEG 640×480 |
+
+---
+
+## ✨ 核心设计
+
+### 🧩 HAL 硬件抽象层（架构核心）
+
+所有硬件操作必须经过 HAL 接口，**禁止直接操作 sysfs**。
+
+```
+传感器故障自愈:
+  read fail → failure_count++
+           → ≥5次 → OFFLINE → 后续立即返回
+           → 60秒后自动重试 → 成功则恢复 ONLINE
+
+数据滤波:
+  温度: 滑动平均窗口3
+  湿度: 滑动平均窗口3
+  光照: 滑动平均窗口5
+  烟雾: 连续3次同一状态才确认（防抖）
+```
+
+### 🤖 三级优先级边缘控制
+
+```
+烟雾联动（最高） → 温度联动（中等） → 光照+PIR联动（最低）
+```
+
+**烟雾联动：** 检测到烟雾 → 立即开风扇 + 拍照上传 + 每10秒告警 → 持续60秒判为传感器故障
+
+**温度联动：** >32°C开风扇，<30°C关风扇（滞回控制，防止继电器频繁跳闸）
+
+**光照+PIR联动：** 天黑有人开灯，无人超过30秒关灯
+
+**关键修复（[详见故障解决文档](SOLUTIONS.md)）：** 修复了烟雾定时器到期后与温度控制打架导致的继电器每5秒跳闸问题。
+
+### 📷 双通道图片上传
+
+```
+烟雾报警 → 拍照
+         ├─ HTTP POST :9090 → 成功 → MQTT通知 → 钉钉(带图)
+         └─ HTTP失败 → MQTT Base64 → 云端解码 → 钉钉(带图)
+```
+
+- V4L2 驱动 USB 摄像头，**用完即释放**，不独占 `/dev/video1`
+- **丢弃前5帧**取稳定画面，彻底解决首帧黑屏
+- HTTP 优先，MQTT Base64 兜底，上传成功率 **78%→99.6%**
+- 30秒超时兜底，照片不到就发不带图告警
+
+### ☁️ 云端可视化
+
+阿里云 ECS 部署，Docker 编排：
+
+```
+mqtt_to_influxdb.py → MQTT订阅 → InfluxDB (sensor_data / heartbeat / error)
+                                     → Grafana 仪表板
+                                     → 钉钉机器人实时告警
+```
+
+### 🔒 安全体系
+
+| 机制 | 说明 |
+|------|------|
+| 设备认证 | MAC 地址 ID + Token + SHA-256 加盐哈希 |
+| Web 鉴权 | 24h 有效期 Token，首次启动随机密码 |
+| 数据脱敏 | 手机号/邮箱/密码/IP 脱敏 |
+| 安全审计 | 12 种事件类型，5 次失败 IP 锁定 300s |
+| OTA 升级 | wget 下载 → SHA256 校验 → 备份 → 安装 → 异常回滚 |
+
+### ⚡ 高可用
+
+- **双看门狗：** RPC Server（30s）+ MQTT Bridge（60s）互保
+- **断网缓存：** 环形缓冲区 100 条，恢复后优先补传
+- **MQTT QoS 1** + 自动重连（5次，5秒间隔）
+- **事件驱动上报：** 状态变化/温度≥1°C/湿度≥5% 立即上报，5分钟强制全量
 
 ---
 
 ## 🚀 快速开始
 
 ### 硬件要求
-- i.MX6ULL 开发板
-- 按上方清单接入传感器
+
+- i.MX6ULL 开发板 + 传感器（按上方硬件清单）
 - USB 摄像头
 
-### 编译与部署
+### 编译
 
 ```bash
-# 1. 编译共享库
-cd shared_lib && make clean && make && cd ..
+# 工具链：arm-buildroot-linux-gnueabihf-gcc/g++ 7.5.0
 
-# 2. 编译 RPC Server
-cd lesson5/rpc_server && make clean && make && cd ../..
+# 1. 共享库
+cd shared_lib && make clean && make
 
-# 3. 编译 MQTT Bridge
-cd lesson6 && make clean && make && cd ..
+# 2. RPC Server（端口1234 + HTTP 8080）
+cd lesson5/rpc_server && make clean && make
 
-# 4. 部署到开发板
-# 将 rpc_server 和 mqtt_bridge 复制到 /usr/local/bin/
-# 将 config.json 复制到 /root/
-
-# 5. 启动服务
-systemctl start rpc_server
-systemctl start mqtt_bridge
-
-# 6. 访问 Web 界面
-# http://开发板IP:8080
+# 3. MQTT Bridge（智能网关，连接RPC和云端）
+cd lesson6 && make clean && make
 ```
 
-### 云端部署
+### 一键部署
 
 ```bash
-# 在阿里云 ECS 上
-cd /opt/iot_mqtt_to_influx
-nohup python3 -u mqtt_to_influxdb.py > mqtt_to_influxdb.log 2>&1 &
+# 部署到开发板
+./deploy.sh board <开发板IP>
 
-# 需要 MQTT Broker + InfluxDB + Grafana (Docker Compose 一键部署)
-cd grafana && docker-compose up -d
+# 部署到阿里云
+./deploy.sh cloud
+
+# 运行单元测试
+./deploy.sh test
 ```
+
+### 验证
+
+```bash
+# Web 管理界面
+curl http://<开发板IP>:8080/api/sensors
+
+# MQTT 远程控制
+mosquitto_pub -h <MQTT_BROKER> -t "device/control" \
+  -m '{"method":"led_control","params":[1]}'
+```
+
+---
+
+## 🌐 Web 管理界面
+
+6 个标签页，响应式设计，跨平台可访问：
+
+| 页面 | 功能 |
+|------|------|
+| 📊 传感器 | 温度/湿度/PIR/光照/烟雾 + 风扇/LED 控制 |
+| 📸 摄像头 | 一键抓拍 + 3s 自动刷新 + 历史照片 |
+| 🔄 OTA 升级 | 固件 URL 输入 + 进度条 + 一键回滚 |
+| ⚙️ 配置 | 温度上下限/风扇时长/告警间隔热更新 |
+| 📋 日志 | 分级筛选 + 关键词过滤 |
+| 💻 设备 | 运行时间/内存/磁盘 + CSV/JSON 导出 |
 
 ---
 
@@ -120,106 +299,93 @@ cd grafana && docker-compose up -d
 
 ```
 .
-├── lesson5/
-│   ├── rpc_server/          # RPC 服务端 + HTTP Web 服务器
-│   │   ├── hal.c/h          # 硬件抽象层（核心设计）
-│   │   ├── rpc_server.c      # JSON-RPC 服务，注册9个方法
-│   │   ├── http_server.c/h   # 轻量级 HTTP 服务器
-│   │   ├── web_api.c         # Web API（传感器/控制/摄像头/配置）
-│   │   ├── camera_manager.c/h# V4L2 摄像头管理
-│   │   └── www/              # Web 前端界面
-│   ├── rpc_client/           # 命令行 RPC 客户端
-│   └── jsonrpc-c/ libev/     # 静态编译库
-├── lesson6/                  # MQTT 智能网关
-│   ├── mqtt_bridge.cpp       # MQTT 桥接主程序（核心）
-│   ├── rpc_client.cpp/h      # RPC 客户端库
-│   ├── data_cache.c/h        # 环形缓冲区缓存（断网重传）
-│   ├── ota_manager.c/h       # OTA 远程升级+回滚
-│   ├── device_auth.c/h       # 设备认证
-│   ├── security_audit.c/h    # 安全审计
-│   ├── crypto_utils.c/h      # 数据加密+SHA-256
-│   ├── memory_pool.c/h       # 内存池
-│   ├── msg_queue.c/h         # 消息队列
-│   ├── sensor_manager.c/h    # 传感器管理
-│   ├── camera_manager.c/h    # 摄像头管理
-│   ├── plugin_manager.c/h    # 插件管理器
-│   ├── perf_monitor.c/h      # 性能监控
-│   ├── system_monitor.c/h    # 系统监控
-│   └── test_cases.c          # 265个单元测试
+├── lesson5/rpc_server/          # RPC 服务层
+│   ├── hal.c/h                  # 硬件抽象层（~735行，核心）
+│   ├── rpc_server.c             # JSON-RPC 服务（10个方法）
+│   ├── http_server.c/h          # HTTP 服务器（端口8080）
+│   ├── web_api.c                # Web API（20+端点）
+│   ├── camera_manager.c/h       # V4L2 摄像头管理
+│   └── www/                     # Web 管理前端
+├── lesson6/                     # MQTT 智能网关
+│   ├── mqtt_bridge.cpp          # 主程序（~1850行，4线程）
+│   ├── rpc_client.cpp/h         # RPC 客户端库
+│   ├── config.c/h               # 配置管理（环境变量→文件→默认）
+│   ├── data_cache.c/h           # 环形缓冲区（断网缓存）
+│   ├── msg_queue.c/h            # 消息队列（4级优先级）
+│   ├── ota_manager.c/h          # OTA 升级
+│   ├── device_auth.c/h          # 设备认证
+│   ├── security_audit.c/h       # 安全审计
+│   ├── crypto_utils.c/h         # SHA-256 + XOR + 脱敏
+│   ├── memory_pool.c/h          # 内存池 + 泄漏检测
+│   ├── sensor_manager.c/h       # 传感器管理器
+│   ├── system_monitor.c/h       # CPU/内存/负载监控
+│   └── test_cases.c             # 33个单元测试
 ├── cloud/
-│   └── mqtt_to_influxdb.py   # MQTT → InfluxDB 桥接
-├── grafana/                  # Docker 部署（InfluxDB+Grafana+Telegraf）
-├── shared_lib/               # 公共库（cJSON + watchdog）
-├── config.json               # 系统配置
-├── check_all.sh              # 一键检查脚本
-└── deploy.sh                 # 部署脚本
+│   └── mqtt_to_influxdb.py      # MQTT→InfluxDB 桥接 + 钉钉
+├── grafana/                     # Docker: InfluxDB+Grafana+Telegraf
+├── shared_lib/                  # 公共库（cJSON+watchdog）
+├── SOLUTIONS.md                 # 故障解决与设计决策记录
+├── config.json                  # 系统配置
+└── deploy.sh                    # 一键编译部署
 ```
-
----
-
-## ✨ 核心特性
-
-| 特性 | 说明 |
-|------|------|
-| **五层架构** | 驱动 → HAL → RPC → 客户端 → 云端，层间解耦 |
-| **HAL 抽象层** | 封装所有硬件操作，换平台只需重写 hal.c |
-| **双通道通信** | JSON-RPC（本地）+ MQTT（远程）+ HTTP REST（Web） |
-| **摄像头** | V4L2 MJPEG 驱动，首帧丢弃防黑屏，双通道上传 |
-| **边缘控制** | 3级优先级、滞后控制、故障自愈 |
-| **高可用** | 环形缓冲区缓存100条、OTA升级+回滚、看门狗 |
-| **安全** | Token+SHA-256认证、IP锁定、数据脱敏 |
-| **可扩展** | 插件管理器(dlopen)、消息队列、内存池 |
-| **代码质量** | 265个单元测试、static analysis、valgrind |
-| **DevOps** | 一键部署脚本、快照管理、编译检查 |
 
 ---
 
 ## 📊 测试覆盖
 
 ```bash
-# 运行单元测试（x86_64）
 cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c \
   data_cache.c msg_queue.c crypto_utils.c memory_pool.c \
   -I../shared_lib/include ../shared_lib/src/cJSON.c \
-  -lm -lpthread -I. -lcrypto && ./test
-
-# 输出示例
-# Total: 265, Pass: 265, Fail: 0
-# All tests passed!
+  -lm -lpthread -I. -lcrypto && ./test && rm -f test
 ```
 
----
+覆盖 6 大模块：
 
-## 🙏 致谢与第三方组件
-
-本项目参考或使用了以下开源项目的代码：
-
-| 组件 | 许可协议 | 版权信息 |
-|------|---------|---------|
-| [libev](http://software.schmorp.de/pkg/libev.html) | BSD-like | Copyright (c) 2007-2013 Marc Alexander Lehmann |
-| [jsonrpc-c](https://github.com/hungys/jsonrpc-c) | MIT | Copyright (c) 2012-2013 Henrique Gomes |
-| [cJSON](https://github.com/DaveGamble/cJSON) | MIT | Copyright (c) 2009-2017 Dave Gamble and cJSON contributors |
-| [mqttclient](https://github.com/jiejieTop/mqttclient) | Apache 2.0 | Copyright (c) 2019-2022 jiejie (jiejieTop) |
-| [mbedtls](https://github.com/Mbed-TLS/mbedtls) | Apache 2.0 | Copyright (c) 2006-2018, Arm Limited |
-| SHA-256 (crypto_utils) | 公有领域 | 参考 Brad Conte 的公有域实现 |
-| DHT11 驱动 | — | 标准单总线协议实现（嵌入式通用知识） |
-| V4L2 摄像头驱动 | — | Linux V4L2 框架标准 API 使用 |
-
-**本项目原创代码部分（hal、mqtt_bridge、rpc_server、http_server、data_cache、ota_manager、security_audit 等）基于 MIT 协议开源。**
+| 模块 | 用例数 | 覆盖内容 |
+|------|--------|---------|
+| error | 2 | 错误码字符串/值范围 |
+| config | 4 | 默认值/JSON加载/组合加载/结构体 |
+| data_cache | 6 | 环形缓冲区 FIFO/溢出/空/统计 |
+| msg_queue | 4 | 创建销毁/发送接收/空/满 |
+| crypto_utils | 6 | SHA-256/XOR加解密/脱敏/安全比较 |
+| memory_pool | 4 | 分配跟踪/泄漏检测/池分配释放 |
+| 辅助 | 7 | JSON/数值/时间/Base64 |
 
 ---
 
-## 📜 协议
+## 🛠 技术栈
 
-本项目基于 MIT 协议开源。详见 [LICENSE](LICENSE) 文件。
+| 领域 | 技术 |
+|------|------|
+| **硬件平台** | NXP i.MX6ULL ARM Cortex-A7 |
+| **工具链** | arm-buildroot-linux-gnueabihf gcc/g++ 7.5.0 |
+| **编程语言** | C（主力）、C++、Python（云端） |
+| **通信协议** | JSON-RPC over TCP、MQTT QoS 0/1、HTTP/1.1 |
+| **事件循环** | libev（epoll 后端） |
+| **时序数据库** | InfluxDB 1.8 |
+| **可视化** | Grafana 10.4 |
+| **容器** | Docker Compose |
+| **云平台** | 阿里云 ECS（8.140.232.52） |
 
 ---
 
-## 👤 作者
+## 📝 更新日志
 
-**朱相波** · 长春大学旅游学院 物联网工程  
-[GitHub](https://github.com/wuqiZhu/IoTDualCtrl) · 求职：嵌入式软件/Linux 应用开发实习生
+### 2026-06
+- 修复继电器跳匝竞态条件问题
+- 摄像头首帧黑屏修复（丢弃前5帧）
+- 摄像头设备独占修复（rpc_server 统一管理）
+- 双通道图片上传（HTTP + MQTT Base64 兜底）
+- [更多历史更新 →](CURRENT.md)
 
 ---
 
-如果这个项目对你有帮助，请点一个 ⭐，谢谢！
+<p align="center">
+  <b>朱相波</b> · 长春大学旅游学院 物联网工程 · CET-6<br>
+  <a href="https://github.com/wuqiZhu/IoTDualCtrl">GitHub</a> · 求职：嵌入式软件/Linux 应用开发实习生
+</p>
+
+<p align="center">
+  ⭐ 如果这个项目对你有帮助，请点一个 Star！
+</p>
