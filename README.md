@@ -38,7 +38,7 @@
 | 代码规模 | **11,000+ 行** C/C++ |
 | 自动化测试 | **33 个用例**，覆盖 6 个核心模块 |
 
-> 💡 本项目基于深圳酷宅科技（易微联 eWeLink）实习期间的硬件开发经验，**独立延申**至架构设计、通信协议栈、云端部署，形成完整全栈 IoT 系统。
+> 💡 本项目从内核驱动到云端部署全链路自研，形成完整全栈 IoT 系统。
 
 ---
 
@@ -55,39 +55,39 @@ graph TB
         PIR[PIR 人体红外]
         SMOKE[烟雾传感器 MQ-2]
         LIGHT[光敏电阻 ADC]
-        CAM[USB 摄像头 V4L2]
-        LED[板载 LED]
-        RELAY1[继电器1 风扇]
-        RELAY2[继电器2 LED灯]
+        CAM["USB 摄像头 V4L2"]
+        LED["板载 LED"]
+        RELAY1["继电器1 风扇"]
+        RELAY2["继电器2 LED灯"]
     end
 
     subgraph "内核驱动层"
-        DRV_DHT[/dev/mydht11]
-        DRV_LED[/dev/100ask_led]
-        SYSFS[sysfs GPIO/ADC]
-        VIDEO[/dev/video1]
+        DRV_DHT["/dev/mydht11"]
+        DRV_LED["/dev/100ask_led"]
+        SYSFS["sysfs GPIO/ADC"]
+        VIDEO["/dev/video1"]
     end
 
     subgraph "HAL 硬件抽象层"
-        HAL[hal.c ~735行<br>GPIO/ADC/传感器封装<br>滤波 · 防抖 · 故障恢复]
+        HAL["hal.c ~735行 | GPIO/ADC/传感器封装 | 滤波 · 防抖 · 故障恢复"]
     end
 
     subgraph "RPC 服务层 TCP:1234"
-        RPC[JSON-RPC over TCP<br>libev + jsonrpc-c<br>10 个 RPC 方法]
-        HTTP[HTTP Server :8080<br>20+ REST API]
-        WEB[Web 管理前端]
+        RPC["JSON-RPC over TCP | libev + jsonrpc-c | 10 个 RPC 方法"]
+        HTTP["HTTP Server :8080 | 20+ REST API"]
+        WEB["Web 管理前端"]
     end
 
     subgraph "应用客户端层"
-        MQTT_BRIDGE[MQTT Bridge<br>4线程 · 事件驱动 · 边缘控制]
-        CLI[命令行 rpc_client]
+        MQTT_BRIDGE["MQTT Bridge | 4线程 · 事件驱动 · 边缘控制"]
+        CLI["命令行 rpc_client"]
     end
 
     subgraph "云端层 阿里云 ECS"
-        MQTT_BROKER[Mosquitto MQTT Broker]
-        INFLUXDB[(InfluxDB 时序数据库)]
-        GRAFANA[Grafana 可视化仪表板]
-        DINGTALK[钉钉机器人告警]
+        MQTT_BROKER["Mosquitto MQTT Broker"]
+        INFLUXDB["InfluxDB 时序数据库"]
+        GRAFANA["Grafana 可视化仪表板"]
+        DINGTALK["钉钉机器人告警"]
     end
 
     DHT11 --> DRV_DHT
@@ -366,7 +366,7 @@ cd lesson6 && gcc -DTEST_MAIN -o test test_cases.c error.c config.c \
 | **时序数据库** | InfluxDB 1.8 |
 | **可视化** | Grafana 10.4 |
 | **容器** | Docker Compose |
-| **云平台** | 阿里云 ECS（8.140.232.52） |
+| **云平台** | 阿里云 ECS |
 
 ---
 
