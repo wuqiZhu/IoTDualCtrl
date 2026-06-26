@@ -78,6 +78,13 @@ new_*.json
 我的简历.pdf
 *简历*.docx
 *简历*.pdf
+优化.md
+操作.md
+*核心集团*.pdf
+
+# Compiled binaries
+lesson5/rpc_server/rpc
+lesson5/rpc_server/rpc_client
 12.html
 CSDN_文章_*.md
 
