@@ -148,6 +148,13 @@ static int local_encode_base64(const unsigned char *input, int input_len,
 #define FULL_REPORT_INTERVAL 300
 
 /* ========================================================================== */
+/*                              AI火灾检测配置 */
+/* ========================================================================== */
+
+/** @brief AI检测响应缓冲区大小 */
+#define AI_RESPONSE_BUF_SIZE 4096
+
+/* ========================================================================== */
 /*                              全局变量 */
 /* ========================================================================== */
 
@@ -196,7 +203,7 @@ static int fan_state = 0;
 /** @brief LED灯状态 (0=关闭, 1=开启) */
 static int led_state = 0;
 
-/** @brief 状态变量互斥锁（保护 fan_state / led_state） */
+/** @brief 风扇/LED状态互斥锁（被遥测线程和工作线程共享）*/
 static pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /** @brief PIR无人计时起点 */
@@ -329,9 +336,6 @@ static int load_mqtt_config(void) {
  */
 static void publish_response(const char *method, int success,
                              const char *extra_json) {
-  if (!client || !mqtt_connected) {
-    return;
-  }
   cJSON *root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "method", method);
   cJSON_AddNumberToObject(root, "success", success);
@@ -364,10 +368,6 @@ static void publish_response(const char *method, int success,
  * @param level 告警级别
  */
 static void publish_alert(const char *type, int level) {
-  if (!client || !mqtt_connected) {
-    printf("MQTT not connected, alert %s dropped\n", type ? type : "?");
-    return;
-  }
   cJSON *root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "method", "smoke_alert");
   cJSON_AddStringToObject(root, "type", type);
@@ -556,70 +556,424 @@ static int http_post_jpeg(const char *host, int port, const char *path,
   return -1;
 }
 
-/* 前向声明：publish_image_http的fallback会调用此函数 */
-static void publish_image(const char *event_type);
-
 /**
- * @brief 图片上传任务结构（传递给上传线程）
+ * @brief 带响应体读取的HTTP POST上传（用于AI检测）
  */
-typedef struct {
-  char event_type[32];
-  unsigned char *jpeg_data;
-  long jpeg_len;
-} image_upload_task_t;
+static int http_post_jpeg_with_response(const char *host, int port,
+                                         const char *path,
+                                         const unsigned char *jpeg_data,
+                                         int jpeg_len,
+                                         char *response_buf,
+                                         int response_size) {
+  struct sockaddr_in addr;
+  int sock;
+  char request_buf[1024];
+  int ret, total_read;
+  struct timeval tv;
+  int body_start = -1;
 
-/**
- * @brief 图片上传线程函数（异步执行，不阻塞遥测线程）
- * @param arg image_upload_task_t 指针（用完释放）
- * @return NULL
- *
- * 在独立线程中执行 HTTP 上传或 Base64+MQTT 回退，
- * 避免 HTTP 超时（最坏 30 秒）阻塞遥测主循环。
- */
-static void *image_upload_thread(void *arg) {
-  image_upload_task_t *task = (image_upload_task_t *)arg;
-  if (!task) return NULL;
+  sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (sock < 0) { return -1; }
 
-  /* 先尝试 HTTP 上传 */
-  int ret = http_post_jpeg(mqtt_host, 9090, "/upload",
-                            task->event_type,
-                            task->jpeg_data, (int)task->jpeg_len);
-  if (ret == 0) {
-    printf("Image uploaded via HTTP: %s (%ld bytes)\n",
-           task->event_type, task->jpeg_len);
-    /* 成功：发一条小MQTT通知 */
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "method", "image_uploaded");
-    cJSON_AddStringToObject(root, "event", task->event_type);
-    cJSON_AddNumberToObject(root, "timestamp", time(NULL));
-    char *payload = cJSON_PrintUnformatted(root);
-    if (payload) {
-      mqtt_message_t msg;
-      memset(&msg, 0, sizeof(msg));
-      msg.payload = (void *)payload;
-      msg.payloadlen = strlen(payload);
-      msg.qos = QOS1;
-      (void)mqtt_publish(client, ALERT_TOPIC, &msg);
-      free(payload);
+  tv.tv_sec = 10;
+  tv.tv_usec = 0;
+  setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0) { close(sock); return -1; }
+
+  ret = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+  if (ret < 0) { close(sock); return -1; }
+
+  snprintf(request_buf, sizeof(request_buf),
+    "POST %s HTTP/1.1\r\n"
+    "Host: %s:%d\r\n"
+    "Content-Type: image/jpeg\r\n"
+    "Content-Length: %d\r\n"
+    "Connection: close\r\n"
+    "\r\n",
+    path, host, port, jpeg_len);
+
+  send(sock, request_buf, strlen(request_buf), 0);
+  send(sock, jpeg_data, jpeg_len, 0);
+
+  total_read = 0;
+  while (total_read < response_size - 1) {
+    ret = recv(sock, response_buf + total_read,
+               response_size - 1 - total_read, 0);
+    if (ret <= 0) break;
+    total_read += ret;
+  }
+  response_buf[total_read] = '\0';
+  close(sock);
+
+  if (total_read == 0) return -1;
+
+  for (int i = 0; i < total_read - 3; i++) {
+    if (response_buf[i] == '\r' && response_buf[i+1] == '\n' &&
+        response_buf[i+2] == '\r' && response_buf[i+3] == '\n') {
+      body_start = i + 4;
+      break;
     }
-    cJSON_Delete(root);
-  } else {
-    /* HTTP 失败，回退到 base64+MQTT */
-    printf("HTTP upload failed, fallback to MQTT base64...\n");
-    publish_image(task->event_type);
+  }
+  if (body_start < 0) return -1;
+
+  memmove(response_buf, response_buf + body_start, total_read - body_start + 1);
+
+  printf("AI detect response: %s\n", response_buf);
+  return 0;
+}
+
+/* 前向声明 */
+static void ai_update_best_frame(const unsigned char *jpeg_data, int jpeg_len,
+                                  float max_conf);
+static void ai_clear_best_frame(void);
+
+/**
+ * @brief AI火灾检测：拍照→上传推理→返回结果
+ * @return 1检测到火灾/烟雾, 0未检测到, -1失败
+ *
+ * 当RPC拍照超时时，会自动复用上次成功缓存的帧（60秒内有效），
+ * 避免频繁RPC超时导致窗口帧丢失。
+ */
+
+/** @brief 最佳帧缓存（用于告警时上传最高置信度的帧） */
+static unsigned char *g_ai_best_jpeg = NULL;
+static int g_ai_best_len = 0;
+static float g_ai_best_confidence = 0.0f;
+static time_t g_ai_best_time = 0;
+
+/** @brief 最近一次成功拍摄的JPEG缓存（用于RPC超时时的降级） */
+static unsigned char *g_ai_last_jpeg = NULL;
+static int g_ai_last_jpeg_len = 0;
+static time_t g_ai_last_capture_time = 0;
+
+static int ai_fire_detect(void) {
+  char jpeg_path[64];
+  unsigned char *jpeg_data = NULL;
+  long jpeg_len;
+  FILE *fp;
+  struct stat st;
+  char response_buf[4096];
+  int ret;
+  int using_cached = 0;
+
+  snprintf(jpeg_path, sizeof(jpeg_path), "/tmp/ai_check_%ld.jpg", time(NULL));
+
+  /* 拍照（带重试：RPC频繁调用可能超时，最多重试2次） */
+  int capture_ok = 0;
+  for (int i = 0; i < 3; i++) {
+    if (rpc_camera_capture_jpeg(jpeg_path) == 0) {
+      capture_ok = 1;
+      break;
+    }
+    printf("AI detect: camera capture retry %d/3\n", i + 1);
+    usleep(200000);
   }
 
-  free(task->jpeg_data);
-  free(task);
-  return NULL;
+  if (capture_ok) {
+    /* 拍照成功：读取JPEG数据 */
+    if (stat(jpeg_path, &st) != 0 || st.st_size <= 0) {
+      capture_ok = 0;
+    } else {
+      jpeg_len = st.st_size;
+      jpeg_data = (unsigned char *)malloc(jpeg_len);
+      if (!jpeg_data) { capture_ok = 0; }
+      else {
+        fp = fopen(jpeg_path, "rb");
+        if (!fp) { free(jpeg_data); capture_ok = 0; }
+        else {
+          fread(jpeg_data, 1, jpeg_len, fp);
+          fclose(fp);
+          unlink(jpeg_path);
+          /* 更新缓存 */
+          if (g_ai_last_jpeg) free(g_ai_last_jpeg);
+          g_ai_last_jpeg = (unsigned char *)malloc(jpeg_len);
+          if (g_ai_last_jpeg) {
+            memcpy(g_ai_last_jpeg, jpeg_data, jpeg_len);
+            g_ai_last_jpeg_len = jpeg_len;
+            g_ai_last_capture_time = time(NULL);
+          }
+        }
+      }
+    }
+  }
+
+  /* 拍照失败：尝试用缓存帧降级（60秒内有效） */
+  if (!capture_ok) {
+    if (g_ai_last_jpeg && g_ai_last_jpeg_len > 0 &&
+        time(NULL) - g_ai_last_capture_time < 60) {
+      printf("AI detect: capture failed, using cached frame (%d bytes, %lds old)\n",
+             g_ai_last_jpeg_len, time(NULL) - g_ai_last_capture_time);
+      jpeg_data = (unsigned char *)malloc(g_ai_last_jpeg_len);
+      if (jpeg_data) {
+        memcpy(jpeg_data, g_ai_last_jpeg, g_ai_last_jpeg_len);
+        jpeg_len = g_ai_last_jpeg_len;
+        using_cached = 1;
+      } else {
+        printf("AI detect: capture failed and no cache available\n");
+        return -1;
+      }
+    } else {
+      printf("AI detect: capture failed and no cache available\n");
+      return -1;
+    }
+  }
+
+  /* 上传到AI推理服务 */
+  ret = http_post_jpeg_with_response(app_config.ai.server_host,
+                                      app_config.ai.server_port,
+                                      app_config.ai.detect_path,
+                                      jpeg_data, (int)jpeg_len,
+                                      response_buf, sizeof(response_buf));
+
+  if (ret != 0) {
+    free(jpeg_data);
+    printf("AI detect: HTTP request failed\n");
+    if (using_cached) {
+      free(g_ai_last_jpeg);
+      g_ai_last_jpeg = NULL;
+      g_ai_last_jpeg_len = 0;
+    }
+    /* 推理失败，清除置信度，不让旧数据影响融合评分 */
+    g_ai_best_confidence = 0.0f;
+    return -1;
+  }
+
+  cJSON *root = cJSON_Parse(response_buf);
+  if (!root) {
+    free(jpeg_data);
+    printf("AI detect: JSON parse failed\n");
+    /* JSON解析失败，不清除最佳帧（可能只是网络问题，帧本身是好的）*/
+    return -1;
+  }
+
+  cJSON *alert_item = cJSON_GetObjectItem(root, "alert");
+  int result = 0;
+  if (alert_item) {
+    result = (cJSON_IsTrue(alert_item) || alert_item->valueint != 0) ? 1 : 0;
+    cJSON *fire_item = cJSON_GetObjectItem(root, "fire_detected");
+    cJSON *smoke_item = cJSON_GetObjectItem(root, "smoke_detected");
+    int fire = (fire_item && cJSON_IsTrue(fire_item)) ? 1 :
+               (fire_item && fire_item->valueint != 0) ? 1 : 0;
+    int smoke = (smoke_item && cJSON_IsTrue(smoke_item)) ? 1 :
+                (smoke_item && smoke_item->valueint != 0) ? 1 : 0;
+
+    /* 提取最高置信度 */
+    float max_conf = 0.0f;
+    cJSON *detections = cJSON_GetObjectItem(root, "detections");
+    if (detections && cJSON_IsArray(detections)) {
+      int det_count = cJSON_GetArraySize(detections);
+      for (int i = 0; i < det_count; i++) {
+        cJSON *det = cJSON_GetArrayItem(detections, i);
+        cJSON *conf = cJSON_GetObjectItem(det, "confidence");
+        if (conf && cJSON_IsNumber(conf) && (float)conf->valuedouble > max_conf) {
+          max_conf = (float)conf->valuedouble;
+        }
+      }
+    }
+    printf("AI detect: fire=%d smoke=%d alert=%d max_conf=%.4f%s\n",
+           fire, smoke, result, max_conf, using_cached ? " (cached)" : "");
+
+    /* 保存最佳帧 */
+    if (result && max_conf > 0) {
+      ai_update_best_frame(jpeg_data, jpeg_len, max_conf);
+    } else {
+      /* AI本次未检出火情，清除旧置信度防止残留导致误报 */
+      g_ai_best_confidence = 0.0f;
+    }
+  }
+
+  cJSON_Delete(root);
+  free(jpeg_data);
+  if (using_cached) {
+    /* 缓存帧已用完（推理成功，但下一帧应该重新拍照） */
+    free(g_ai_last_jpeg);
+    g_ai_last_jpeg = NULL;
+    g_ai_last_jpeg_len = 0;
+  }
+  return result;
 }
+
+/* ========================================================================== */
+/*                         AI时序滤波 — 滑动窗口投票机制                      */
+/* ========================================================================== */
+
+/**
+ * @brief 滑动窗口：记录最近N帧AI检测结果，达到阈值才触发告警
+ *
+ * 设计目的：单帧误报很常见（光线变化、摄像头抖动等），
+ * 但连续多帧都检测到火情才是真火。
+ *
+ * 工作方式：
+ * 1. 维护一个长度为 WINDOW_SIZE 的环形缓冲区
+ * 2. 每帧检测结果（0/1）入队
+ * 3. 只有 sum(buffer) >= THRESHOLD 才触发告警
+ * 4. 告警后有冷却期（COOLDOWN秒），避免同一火情重复告警
+ */
+
+/** @brief 滑动窗口大小（记录最近N帧） */
+#define AI_WINDOW_SIZE 5
+
+/** @brief 触发阈值（至少N帧检测到才告警） */
+#define AI_WINDOW_THRESHOLD 3
+
+/** @brief 告警冷却时间（秒） 同一火情不重复告警 */
+#define AI_ALERT_COOLDOWN 30
+
+/** @brief 滑动窗口缓冲区（环形） */
+static int g_ai_frame_buffer[AI_WINDOW_SIZE] = {0};
+
+/** @brief 当前写入位置 */
+static int g_ai_frame_index = 0;
+
+/** @brief 上次告警时间（用于冷却） */
+static time_t g_last_ai_alert_time = 0;
+
+/* 最佳帧相关变量已在 ai_fire_detect 前定义 */
+
+/**
+ * @brief 更新最佳帧（如果当前帧置信度更高则替换）
+ * @param jpeg_data 当前帧的JPEG数据
+ * @param jpeg_len 当前帧JPEG长度
+ * @param max_conf 当前帧最高置信度
+ *
+ * 在窗口期内保存置信度最高的那一帧，告警时上传此帧。
+ * 确保钉钉收到的图片是火情最清晰的那一帧。
+ */
+static void ai_update_best_frame(const unsigned char *jpeg_data, int jpeg_len,
+                                  float max_conf) {
+  if (max_conf > g_ai_best_confidence) {
+    /* 释放旧的最佳帧 */
+    if (g_ai_best_jpeg) {
+      free(g_ai_best_jpeg);
+    }
+    /* 保存新的最佳帧 */
+    g_ai_best_jpeg = (unsigned char *)malloc(jpeg_len);
+    if (g_ai_best_jpeg) {
+      memcpy(g_ai_best_jpeg, jpeg_data, jpeg_len);
+      g_ai_best_len = jpeg_len;
+      g_ai_best_confidence = max_conf;
+      g_ai_best_time = time(NULL);
+      printf("AI best frame updated: conf=%.4f, size=%d\n", max_conf, jpeg_len);
+    }
+  }
+}
+
+/**
+ * @brief 清除最佳帧缓存
+ */
+static void ai_clear_best_frame(void) __attribute__((unused));
+static void ai_clear_best_frame(void) {
+  if (g_ai_best_jpeg) {
+    free(g_ai_best_jpeg);
+    g_ai_best_jpeg = NULL;
+  }
+  g_ai_best_len = 0;
+  g_ai_best_confidence = 0.0f;
+}
+
+/**
+ * @brief 重置滑动窗口（用于切换场景后清空历史）
+ */
+static void ai_reset_window(void) __attribute__((unused));
+static void ai_reset_window(void) {
+  memset(g_ai_frame_buffer, 0, sizeof(g_ai_frame_buffer));
+  g_ai_frame_index = 0;
+  printf("AI window: reset\n");
+}
+
+/**
+ * @brief 滑动窗口投票：将当前帧结果入队，判断是否达到告警阈值
+ * @param current_detect 当前帧是否检测到火情（1=检测到, 0=未检测到）
+ * @return 1应告警, 0需继续观测, -1冷却中不应告警
+ *
+ * 告警条件：
+ * 1. 窗口内检测到的帧数 >= AI_WINDOW_THRESHOLD
+ * 2. 不在冷却期内
+ *
+ * 冷却期：告警后 AI_ALERT_COOLDOWN 秒内不再重复告警
+ */
+static int ai_vote(int current_detect) {
+  time_t now = time(NULL);
+
+  /* 冷却检查：告警后120秒内不重复告警 */
+  if (g_last_ai_alert_time > 0 &&
+      now - g_last_ai_alert_time < AI_ALERT_COOLDOWN) {
+    printf("AI vote: cooldown (%lds remaining), skipping\n",
+           AI_ALERT_COOLDOWN - (now - g_last_ai_alert_time));
+    return -1;
+  }
+
+  /* 当前帧结果入队 */
+  g_ai_frame_buffer[g_ai_frame_index] = current_detect ? 1 : 0;
+  g_ai_frame_index = (g_ai_frame_index + 1) % AI_WINDOW_SIZE;
+
+  /* 统计窗口内检测到的帧数 */
+  int sum = 0;
+  for (int i = 0; i < AI_WINDOW_SIZE; i++) {
+    sum += g_ai_frame_buffer[i];
+  }
+
+  printf("AI vote: frame=%d, window_sum=%d/%d, threshold=%d\n",
+         current_detect, sum, AI_WINDOW_SIZE,
+         app_config.ai.consecutive_frames);
+
+  if (sum >= app_config.ai.consecutive_frames) {
+    printf("AI vote: THRESHOLD MET! Triggering alert.\n");
+    g_last_ai_alert_time = now;
+    /* 清空窗口缓冲区，避免冷却结束后旧数据凑够阈值再次误触发 */
+    memset(g_ai_frame_buffer, 0, sizeof(g_ai_frame_buffer));
+    g_ai_frame_index = 0;
+    return 1;
+  }
+
+  return 0;
+}
+
+/**
+ * @brief AI检测+投票（替代直接调用ai_fire_detect）
+ * @return 1应告警, 0无需告警, -1检测失败或冷却中
+ *
+ * 封装了拍照→检测→投票的完整流程。
+ * 使用互斥锁防止与RPC其他操作（传感器读取、继电器控制）争抢连接。
+ */
+static pthread_mutex_t ai_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int ai_detect_and_vote(void) {
+  int result;
+
+  if (pthread_mutex_trylock(&ai_mutex) != 0) {
+    /* 上一轮AI检测还没完成（可能RPC超时卡住），跳过本轮 */
+    printf("AI detect: skipped (previous still in progress)\n");
+    return -1;
+  }
+
+  result = ai_fire_detect();
+
+  pthread_mutex_unlock(&ai_mutex);
+
+  if (result < 0) {
+    return -1;
+  }
+  return ai_vote(result);
+}
+
+/* 前向声明：publish_image_http的fallback会调用此函数 */
+static void publish_image(const char *event_type);
 
 /**
  * @brief 通过HTTP上传图片+MQTT小通知（替代原MQTT传base64方案）
  * @param event_type 事件类型
  *
- * 不再阻塞遥测线程——拍照+读文件在主线程完成，
- * HTTP上传和MQTT发布在独立线程中异步执行。
+ * 流程：
+ * 1. 拍照并保存到临时文件
+ * 2. HTTP POST上传JPEG到云端
+ * 3. 成功 → 发一条小MQTT通知（不带图片数据）
+ * 4. 失败 → 回退到原base64+MQTT方案
  */
 static void publish_image_http(const char *event_type) {
   char jpeg_path[64];
@@ -631,7 +985,7 @@ static void publish_image_http(const char *event_type) {
   snprintf(jpeg_path, sizeof(jpeg_path), "/tmp/iot_http_%s.jpg",
            event_type ? event_type : "unknown");
 
-  /* 1. 通过RPC拍照 */
+  /* 1. 通过RPC拍照（避免直接操作摄像头硬件） */
   if (rpc_camera_capture_jpeg(jpeg_path) != 0) {
     printf("HTTP image: RPC camera capture failed\n");
     return;
@@ -658,32 +1012,38 @@ static void publish_image_http(const char *event_type) {
   }
   fread(jpeg_data, 1, jpeg_len, fp);
   fclose(fp);
-  unlink(jpeg_path);
+  unlink(jpeg_path);  /* 删除临时文件 */
 
-  /* 3. 启动异步上传线程（拍照和读文件已完成，不阻塞主线程） */
-  image_upload_task_t *task = (image_upload_task_t *)malloc(sizeof(*task));
-  if (!task) {
-    printf("HTTP image: task malloc failed\n");
+  /* 3. HTTP上传 */
+  int ret = http_post_jpeg(mqtt_host, 9090, "/upload",
+                            event_type, jpeg_data, (int)jpeg_len);
+  if (ret == 0) {
+    printf("Image uploaded via HTTP: %s (%ld bytes)\n",
+           event_type, jpeg_len);
+    /* 成功：发一条小MQTT通知（仅事件信息，无图片数据） */
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "method", "image_uploaded");
+    cJSON_AddStringToObject(root, "event", event_type);
+    cJSON_AddNumberToObject(root, "timestamp", time(NULL));
+    char *payload = cJSON_PrintUnformatted(root);
+    if (payload) {
+      mqtt_message_t msg;
+      memset(&msg, 0, sizeof(msg));
+      msg.payload = (void *)payload;
+      msg.payloadlen = strlen(payload);
+      msg.qos = QOS1;
+      (void)mqtt_publish(client, ALERT_TOPIC, &msg);
+      free(payload);
+    }
+    cJSON_Delete(root);
+  } else {
+    printf("HTTP upload failed, fallback to MQTT base64...\n");
     free(jpeg_data);
+    publish_image(event_type);
     return;
   }
 
-  strncpy(task->event_type, event_type ? event_type : "unknown",
-          sizeof(task->event_type) - 1);
-  task->event_type[sizeof(task->event_type) - 1] = '\0';
-  task->jpeg_data = jpeg_data;
-  task->jpeg_len = jpeg_len;
-
-  pthread_t upload_tid;
-  if (pthread_create(&upload_tid, NULL, image_upload_thread, task) != 0) {
-    printf("HTTP image: failed to create upload thread\n");
-    free(jpeg_data);
-    free(task);
-    return;
-  }
-  pthread_detach(upload_tid);
-  printf("Image upload thread started: %s (%ld bytes)\n",
-         event_type ? event_type : "?", jpeg_len);
+  free(jpeg_data);
 }
 
 static void publish_image(const char *event_type) {
@@ -958,8 +1318,7 @@ static void publish_telemetry(void) {
           if (mqtt_publish(client, TELEMETRY_TOPIC, &cached_msg) == 0) {
             printf("Cached telemetry sent: %s\n", cached_data);
           } else {
-            /* 发送失败，标记断开并重新缓存 */
-            mqtt_connected = 0;
+            /* 发送失败，重新缓存 */
             data_cache_push(cached_data, cached_len);
             break;
           }
@@ -976,9 +1335,8 @@ static void publish_telemetry(void) {
         if (mqtt_publish(client, TELEMETRY_TOPIC, &msg) == 0) {
           printf("Telemetry published: %s\n", payload);
         } else {
-          /* 发送失败，标记断开并缓存数据 */
-          printf("MQTT publish failed, connection may be lost\n");
-          mqtt_connected = 0;
+          /* 发送失败，缓存数据 */
+          printf("MQTT publish failed, caching data\n");
           data_cache_push(payload, strlen(payload));
         }
       } else {
@@ -1022,17 +1380,42 @@ static void publish_telemetry(void) {
  * 5. 烟雾持续报警超过 smoke_fault_timeout 秒时判定为传感器故障
  */
 static void auto_control_smoke(int smoke_digital, time_t *smoke_fan_until,
-                               time_t *last_alert_time) {
+                               time_t *last_alert_time, int allow_alert) {
   time_t now = time(NULL);
 
   if (smoke_digital == -1) {
     return;
   }
 
+  /* 烟雾防抖计数器（跨函数调用保持） */
+  static int smoke_debounce_cnt = 0;
+
   if (smoke_digital == smoke_alert_level) {
+    smoke_debounce_cnt++;
+    if (smoke_debounce_cnt < 3) {
+      printf("Auto: smoke debounce %d/3\n", smoke_debounce_cnt);
+      return;
+    }
+
     /* 记录烟雾报警起始时间 */
     if (smoke_alarm_start_time == 0) {
       smoke_alarm_start_time = now;
+    }
+
+    /* AI确认：烟雾传感器触发后，用AI视觉做二次确认
+     * 采用滑动窗口投票，连续多帧检测才确认
+     * 烟雾传感器本身就有价值，AI确认作为补充信息 */
+    static time_t last_ai_confirm = 0;
+    if (app_config.ai.enabled &&
+        now - last_ai_confirm > smoke_alert_interval * 2) {
+      last_ai_confirm = now;
+      printf("Auto: Smoke sensor triggered, starting AI multi-frame confirmation...\n");
+      int ai_result = ai_detect_and_vote();
+      if (ai_result > 0) {
+        printf("Auto: AI confirmed fire/smoke via multi-frame vote\n");
+      } else if (ai_result == 0) {
+        printf("Auto: AI found no fire/smoke (but smoke sensor triggered - may be early stage)\n");
+      }
     }
 
     /* 故障检测：持续报警超过阈值 */
@@ -1053,10 +1436,7 @@ static void auto_control_smoke(int smoke_digital, time_t *smoke_fan_until,
     }
 
     /* 检测到烟雾，开启风扇 */
-    pthread_mutex_lock(&state_mutex);
-    int fan_off = !fan_state;
-    pthread_mutex_unlock(&state_mutex);
-    if (fan_off) {
+    if (!fan_state) {
       if (rpc_relay_control(1) == 0) {
         pthread_mutex_lock(&state_mutex);
         fan_state = 1;
@@ -1075,12 +1455,19 @@ static void auto_control_smoke(int smoke_digital, time_t *smoke_fan_until,
       if (rpc_camera_capture_jpeg(photo_path) == 0) {
         printf("Smoke alert photo saved: %s\n", photo_path);
       }
-      publish_alert("smoke", 1);
-      publish_image_http("smoke_alert");
+      if (allow_alert) {
+        /* ALERT状态：融合评分已确认，不依赖烟雾传感器当前值 */
+        publish_alert("smoke", 1);
+        publish_image_http("smoke_alert");
+      }
+      if (!allow_alert) {
+        printf("Auto: smoke detected (monitoring, score < 60)\n");
+      }
       *last_alert_time = now;
     }
   } else {
     /* 烟雾恢复正常 */
+    smoke_debounce_cnt = 0; /* 重置防抖计数器 */
     smoke_alarm_start_time = 0;
     smoke_sensor_fault = 0;
 
@@ -1091,10 +1478,7 @@ static void auto_control_smoke(int smoke_digital, time_t *smoke_fan_until,
      * 2. 检查当前温度——如果温度仍超过高温阈值，不关风扇，
      *    交给 auto_control_temp 统一管理，避免继电器跳匝
      * 3. 处理完后重置 smoke_fan_until = 0，防止下次循环重复触发 */
-    pthread_mutex_lock(&state_mutex);
-    int fan_is_on = fan_state;
-    pthread_mutex_unlock(&state_mutex);
-    if (fan_is_on && *smoke_fan_until > 0 && now >= *smoke_fan_until) {
+    if (fan_state && *smoke_fan_until > 0 && now >= *smoke_fan_until) {
       /* 温度仍然偏高时，不介入，让温度联动自行管理 */
       if (g_sensor_cache.temp < temp_high_threshold ||
           g_sensor_cache.temp == -1) {
@@ -1138,20 +1522,15 @@ static void auto_control_temp(int temp, int smoke_digital,
     return;
   }
 
-  /* 温度控制逻辑（先读状态再决策，避免竞态） */
-  pthread_mutex_lock(&state_mutex);
-  int need_fan_on = (temp > temp_high_threshold && !fan_state);
-  int need_fan_off = (temp < temp_low_threshold && fan_state);
-  pthread_mutex_unlock(&state_mutex);
-
-  if (need_fan_on) {
+  /* 温度控制逻辑 */
+  if (temp > temp_high_threshold && !fan_state) {
     if (rpc_relay_control(1) == 0) {
       pthread_mutex_lock(&state_mutex);
       fan_state = 1;
       pthread_mutex_unlock(&state_mutex);
       printf("Auto: Fan ON (temp=%d°C > %d)\n", temp, temp_high_threshold);
     }
-  } else if (need_fan_off) {
+  } else if (temp < temp_low_threshold && fan_state) {
     if (rpc_relay_control(0) == 0) {
       pthread_mutex_lock(&state_mutex);
       fan_state = 0;
@@ -1179,10 +1558,7 @@ static void auto_control_light_pir(int light, int pir) {
 
   if (light == 1 && pir == 1) {
     /* 天黑且有人，开启LED */
-    pthread_mutex_lock(&state_mutex);
-    int led_off = !led_state;
-    pthread_mutex_unlock(&state_mutex);
-    if (led_off) {
+    if (!led_state) {
       if (rpc_relay2_control(1) == 0) {
         pthread_mutex_lock(&state_mutex);
         led_state = 1;
@@ -1197,10 +1573,7 @@ static void auto_control_light_pir(int light, int pir) {
       last_pir_off_time = now;
     }
     /* 延时关闭LED */
-    pthread_mutex_lock(&state_mutex);
-    int led_on = led_state;
-    pthread_mutex_unlock(&state_mutex);
-    if (led_on && (now - last_pir_off_time) >= PIR_OFF_DELAY) {
+    if (led_state && (now - last_pir_off_time) >= PIR_OFF_DELAY) {
       if (rpc_relay2_control(0) == 0) {
         pthread_mutex_lock(&state_mutex);
         led_state = 0;
@@ -1211,33 +1584,339 @@ static void auto_control_light_pir(int light, int pir) {
   }
 }
 
+/* 温湿度历史记录（用于融合评分计算变化率） */
+static int g_last_temp = -1;
+static int g_last_humi = -1;
+static time_t g_last_sensor_time = 0;
+
+/* 动态权重版在下方 */
+
+/* ========================================================================== */
+/*                    状态机 + 动态权重 自动控制                              */
+/* ========================================================================== */
+typedef enum {
+  FUSION_STATE_SAFE = 0,     /** 安全：一切正常 */
+  FUSION_STATE_MONITOR,      /** 关注：有可疑信号，正在确认 */
+  FUSION_STATE_ALERT,        /** 告警：确认火灾，已发通知 */
+  FUSION_STATE_COOLDOWN,     /** 冷却：告警后等待重置 */
+} fusion_state_t;
+
+static fusion_state_t g_fusion_state = FUSION_STATE_SAFE;
+static time_t g_state_enter_time = 0;  /** 进入当前状态的时间 */
+static int g_fusion_accum_score = 0;   /** 累积分数（带衰减）*/
+static int g_alert_sent_flag = 0;      /** ALERT状态下是否已发钉钉 */
+
 /**
- * @brief 自动控制主函数
+ * @brief 获取动态修正后的权重
+ * @param base_weight 默认权重
+ * @param sensor_type 传感器类型（"temp"/"pir"/"light"/"smoke"）
+ * @return 修正后的权重
  *
- * 读取传感器数据并执行三种联动控制：
- * 1. 烟雾联动（最高优先级）
- * 2. 温度联动
- * 3. 光照+PIR联动
+ * 根据时间、环境自动调整权重：
+ * - 工作时间PIR权重减半（人员正常走动）
+ * - 深夜所有权重增加（更警惕）
+ * - 夏季温度权重降低（高温是正常的）
+ */
+static int get_dynamic_weight(int base_weight, const char *sensor_type) {
+  time_t now = time(NULL);
+  struct tm *tm_info = localtime(&now);
+  int hour = tm_info ? tm_info->tm_hour : 12;
+
+  (void)sensor_type;
+
+  /* 深夜时段 (0:00-6:00)：所有权重提高，更警惕 */
+  if (hour >= 0 && hour < 6) {
+    return base_weight * 1.5f;
+  }
+
+  /* 工作时间 (8:00-18:00)：PIR权重降低 */
+  if (hour >= 8 && hour < 18 && strcmp(sensor_type, "pir") == 0) {
+    return base_weight / 2;
+  }
+
+  /* 夏季高温 (温度 > 30°C)：温度权重降低 */
+  if (strcmp(sensor_type, "temp") == 0 &&
+      g_sensor_cache.temp > 30 && g_sensor_cache.temp < 40) {
+    return base_weight / 2;
+  }
+
+  return base_weight;
+}
+
+/**
+ * @brief 多传感器融合评分（动态权重版）
+ * @return 总分
+ */
+static int sensor_fusion_score(void) {
+  int new_signals = 0;
+  time_t now = time(NULL);
+  int w;
+
+  /* 衰减：有信号时慢（×0.95，信号存活约60秒），无信号时快 */
+  static time_t last_signal_time = 0;
+  g_fusion_accum_score = g_fusion_accum_score * 0.95f;
+
+  /* 如果连续60秒没有任何新信号，直接清零（防止旧分数残留导致误报）*/
+  if (last_signal_time > 0 && now - last_signal_time > 60) {
+    g_fusion_accum_score = 0;
+  }
+
+  /* 1. 烟雾传感器 */
+  w = get_dynamic_weight(app_config.ai.weight_smoke, "smoke");
+  if (w > 0 && g_sensor_cache.smoke_digital == smoke_alert_level) {
+    g_fusion_accum_score += w; new_signals += w;
+    printf("Fusion: smoke sensor +%d\n", w);
+  }
+
+  /* 2. 温度变化率 */
+  if (g_last_temp > 0 && g_sensor_cache.temp > 0 &&
+      now - g_last_sensor_time > 0 && now - g_last_sensor_time < 300) {
+    float temp_rate = (float)(g_sensor_cache.temp - g_last_temp) /
+                      (float)(now - g_last_sensor_time) * 60.0f;
+    w = get_dynamic_weight(app_config.ai.weight_temp_rise, "temp");
+    /* 最低变化量≥2°C，排除DHT11的±1°C噪声 */
+    if (w > 0 && temp_rate > 3.0f &&
+        abs(g_sensor_cache.temp - g_last_temp) >= 2) {
+      g_fusion_accum_score += w; new_signals += w;
+      printf("Fusion: temp rising %.1f°C/min +%d\n", temp_rate, w);
+    }
+    w = get_dynamic_weight(app_config.ai.weight_temp_high, "temp");
+    if (w > 0 && g_sensor_cache.temp > 45) {
+      g_fusion_accum_score += w; new_signals += w;
+      printf("Fusion: temp >45°C +%d\n", w);
+    }
+    /* 绝对温度>33°C持续加分（阴燃期温度缓升）*/
+    if (g_sensor_cache.temp > 33 && g_sensor_cache.temp <= 45) {
+      g_fusion_accum_score += w/2; new_signals += w/2;
+      printf("Fusion: temp 33-45°C +%d\n", w/2);
+    }
+  }
+
+  /* 3. 湿度变化率 */
+  if (g_last_humi > 0 && g_sensor_cache.humi > 0 &&
+      now - g_last_sensor_time > 0 && now - g_last_sensor_time < 300) {
+    float humi_rate = (float)(g_sensor_cache.humi - g_last_humi) /
+                      (float)(now - g_last_sensor_time) * 60.0f;
+    w = get_dynamic_weight(app_config.ai.weight_humi_drop, "humi");
+    /* 湿度骤降阈值30%/min，避免DHT11正常波动（±1%）被误判 */
+    /* 最低变化量≥3%，排除DHT11的±1%噪声 */
+    if (w > 0 && humi_rate < -30.0f &&
+        abs(g_sensor_cache.humi - g_last_humi) >= 3) {
+      g_fusion_accum_score += w; new_signals += w;
+      printf("Fusion: humidity dropping %.1f%%/min +%d\n", -humi_rate, w);
+    }
+  }
+
+  /* 4. 光照突变 */
+  {
+    static int last_light_val = -1;
+    w = get_dynamic_weight(app_config.ai.weight_light, "light");
+    if (w > 0 && last_light_val == 0 && g_sensor_cache.light == 1) {
+      g_fusion_accum_score += w; new_signals += w;
+      printf("Fusion: sudden bright +%d\n", w);
+    }
+    last_light_val = g_sensor_cache.light;
+  }
+
+  /* 5. 设备状态异常 */
+  {
+    static int last_fan_state = -1;
+    static int fan_toggled_recently = 0;
+    if (last_fan_state != g_sensor_cache.relay) {
+      fan_toggled_recently = 1;
+      last_fan_state = g_sensor_cache.relay;
+    }
+    w = get_dynamic_weight(app_config.ai.weight_device, "device");
+    if (w > 0 && fan_toggled_recently &&
+        g_sensor_cache.smoke_digital == smoke_alert_level) {
+      g_fusion_accum_score += w; new_signals += w;
+      printf("Fusion: abnormal device state +%d\n", w);
+    }
+  }
+
+  /* 6. PIR异常有人 — 配合烟雾/AI时加分；夜间单独也加分 */
+  w = get_dynamic_weight(app_config.ai.weight_pir, "pir");
+  if (w > 0 && g_sensor_cache.pir == 1 && g_sensor_cache.relay2 == 0) {
+    int pir_score = 0;
+    if (g_sensor_cache.smoke_digital == smoke_alert_level ||
+        g_ai_best_confidence > app_config.ai.confidence_threshold) {
+      pir_score = w; /* 配合火灾信号：正常权重 */
+    } else {
+      /* 夜间单独有人：减半权重 */
+      time_t now_t = time(NULL);
+      struct tm *tm_info = localtime(&now_t);
+      if (tm_info && tm_info->tm_hour >= 0 && tm_info->tm_hour < 6) {
+        pir_score = w / 2;
+      }
+    }
+    if (pir_score > 0) {
+      g_fusion_accum_score += pir_score; new_signals += pir_score;
+      printf("Fusion: unexpected presence +%d\n", pir_score);
+    }
+  }
+
+  /* 7. AI检测结果（60秒内有效） */
+  w = (app_config.ai.weight_ai_fire > app_config.ai.weight_ai_smoke)
+       ? app_config.ai.weight_ai_fire : app_config.ai.weight_ai_smoke;
+  if (w > 0 && g_ai_best_confidence > app_config.ai.confidence_threshold &&
+      now - g_ai_best_time < 60) {
+    g_fusion_accum_score += w; new_signals += w;
+    printf("Fusion: AI visual confirmation +%d (conf=%.4f, %lds old)\n",
+           w, g_ai_best_confidence, now - g_ai_best_time);
+  }
+
+  /* 并发倍率前置：多个高权重信号同时触发时，新信号总值×1.5
+   * 高权重信号：烟雾、AI、温度。PIR 单独不算 */
+  {
+    int high_signals = 0;
+    if (g_sensor_cache.smoke_digital == smoke_alert_level) high_signals++;
+    if (g_ai_best_confidence > app_config.ai.confidence_threshold && now - g_ai_best_time < 60) high_signals++;
+    if (g_last_temp > 0 && g_sensor_cache.temp > 0 &&
+        abs(g_sensor_cache.temp - g_last_temp) > 3) high_signals++;
+
+    if (high_signals >= 2) {
+      int bonus = new_signals * 0.5f;
+      g_fusion_accum_score += bonus;
+      new_signals += bonus;
+      printf("Fusion: concurrent x1.5 +%d (%d signals)\n", bonus, high_signals);
+    }
+  }
+
+  /* 更新历史记录 */
+  if (g_sensor_cache.temp > 0) g_last_temp = g_sensor_cache.temp;
+  if (g_sensor_cache.humi > 0) g_last_humi = g_sensor_cache.humi;
+  g_last_sensor_time = now;
+  /* PIR单独不阻止清零（人走动是正常的），只有烟雾/AI/温度等火灾信号才刷新计时 */
+  if (new_signals > 0 && !(new_signals <= app_config.ai.weight_pir * 2)) {
+    last_signal_time = now;
+  }
+
+  /* 只在分数变化时打印，减少日志刷屏 */
+  {
+    static int last_printed_score = -1;
+    static int last_printed_state = -1;
+    if (g_fusion_accum_score != last_printed_score || g_fusion_state != last_printed_state) {
+      printf("Fusion: accum=%d (+%d this cycle), state=%d)\n",
+             g_fusion_accum_score, new_signals, g_fusion_state);
+      last_printed_score = g_fusion_accum_score;
+      last_printed_state = g_fusion_state;
+    }
+  }
+
+  /* 根据当前状态对分数做修正 */
+  if (g_fusion_state == FUSION_STATE_ALERT ||
+      g_fusion_state == FUSION_STATE_COOLDOWN) {
+    return 0;
+  }
+
+  return g_fusion_accum_score;
+}
+
+/**
+ * @brief 状态机自动控制主函数
+ *
+ * 状态迁移：
+ *   SAFE ──有可疑信号──→ MONITOR ──确认异常──→ ALERT
+ *     ↑                    │                      │
+ *     └───恢复正常────────┘  └───冷却30秒后──────┘
+ *                              → MONITOR → 无异常 → SAFE
  */
 static void auto_control(void) {
   int pir, light, smoke_digital;
   int temp = -1;
   static time_t smoke_fan_until = 0;
   static time_t last_alert_time = 0;
+  time_t now = time(NULL);
 
-  /* 使用缓存的传感器数据（由refresh_sensor_cache填充） */
-  if (!g_sensor_cache.valid) {
-    return;
-  }
+  if (!g_sensor_cache.valid) return;
   pir = g_sensor_cache.pir;
   light = g_sensor_cache.light;
   temp = g_sensor_cache.temp;
   smoke_digital = g_sensor_cache.smoke_digital;
 
-  /* 执行自动控制 */
-  auto_control_smoke(smoke_digital, &smoke_fan_until, &last_alert_time);
-  auto_control_temp(temp, smoke_digital, smoke_fan_until);
-  auto_control_light_pir(light, pir);
+  switch (g_fusion_state) {
+
+  case FUSION_STATE_SAFE:
+    /* 安全状态：持续监控，有异常信号升级到关注 */
+    {
+      int score = sensor_fusion_score();
+      if (score >= 60 || smoke_digital == smoke_alert_level ||
+          g_ai_best_confidence > app_config.ai.confidence_threshold) {
+        g_fusion_state = FUSION_STATE_MONITOR;
+        g_state_enter_time = now;
+        printf("Auto: SAFE → MONITOR (score=%d, smoke=%d, ai=%.4f)\n",
+               score, smoke_digital, g_ai_best_confidence);
+      }
+    }
+    /* 常规控制 */
+    auto_control_temp(temp, smoke_digital, smoke_fan_until);
+    auto_control_light_pir(light, pir);
+    break;
+
+  case FUSION_STATE_MONITOR:
+    /* 关注状态：正在确认是否有真火情 */
+    {
+      int score = sensor_fusion_score();
+      /* 升级条件：分数足够 或 烟雾传感器+AI双重确认 */
+      if (score >= 60) {
+        g_fusion_state = FUSION_STATE_ALERT;
+        g_state_enter_time = now;
+        printf("Auto: MONITOR → ALERT (score=%d)\n", score);
+        auto_control_smoke(smoke_digital, &smoke_fan_until, &last_alert_time, 0);
+      } else if (now - g_state_enter_time > 60) {
+        /* 60秒内没有确认异常，回到安全状态 */
+        g_fusion_state = FUSION_STATE_SAFE;
+        g_state_enter_time = now;
+        printf("Auto: MONITOR → SAFE (timeout, no confirm)\n");
+      }
+    }
+    auto_control_temp(temp, smoke_digital, smoke_fan_until);
+    auto_control_light_pir(light, pir);
+    break;
+
+  case FUSION_STATE_ALERT:
+    /* 告警状态：已由融合评分确认，直接发钉钉+开风扇（不依赖烟雾传感器当前值）*/
+    auto_control_smoke(smoke_digital, &smoke_fan_until, &last_alert_time, 0);
+    /* 直接开风扇（不管烟雾传感器当前值，因为融合评分已确认）*/
+    if (!fan_state) {
+      if (rpc_relay_control(1) == 0) {
+        pthread_mutex_lock(&state_mutex);
+        fan_state = 1;
+        pthread_mutex_unlock(&state_mutex);
+        printf("Auto: Fan ON due to ALERT state\n");
+      }
+    }
+    if (!g_alert_sent_flag) {
+      publish_alert("smoke", 1);
+      /* 拍照上传（不依赖烟雾传感器）*/
+      publish_image_http("smoke_alert");
+      printf("Auto: ALERT triggered by fusion score\n");
+      g_alert_sent_flag = 1;
+    }
+    auto_control_light_pir(light, pir);
+    if (now - g_state_enter_time > 30) {
+      g_fusion_state = FUSION_STATE_COOLDOWN;
+      g_state_enter_time = now;
+      g_alert_sent_flag = 0;  /* 重置告警标志，下次ALERT可重新发送 */
+      printf("Auto: ALERT → COOLDOWN\n");
+    }
+    break;
+
+  case FUSION_STATE_COOLDOWN:
+    /* 冷却状态：等待烟雾消散，30秒后回到监控 */
+    auto_control_smoke(smoke_digital, &smoke_fan_until, &last_alert_time, 0);
+    auto_control_temp(temp, smoke_digital, smoke_fan_until);
+    auto_control_light_pir(light, pir);
+
+    if (now - g_state_enter_time > 30) {
+      g_fusion_state = FUSION_STATE_SAFE;
+      g_state_enter_time = now;
+      printf("Auto: COOLDOWN → SAFE\n");
+      /* 清除AI缓存，重新开始检测 */
+      g_ai_best_confidence = 0.0f;
+    }
+    break;
+  }
 }
 
 /* ========================================================================== */
@@ -1257,11 +1936,8 @@ static int mqtt_reconnect(void) {
   int err;
 
   for (int i = 0; i < MQTT_RECONNECT_MAX_RETRIES; i++) {
-    int delay = MQTT_RECONNECT_DELAY * (i + 1); /* 递增等待：5s, 10s, 15s... */
-    if (delay > 30) delay = 30;
-
-    printf("MQTT reconnecting... attempt %d/%d (waiting %ds)\n", i + 1,
-           MQTT_RECONNECT_MAX_RETRIES, delay);
+    printf("MQTT reconnecting... attempt %d/%d\n", i + 1,
+           MQTT_RECONNECT_MAX_RETRIES);
 
     err = mqtt_connect(client);
     if (err == 0) {
@@ -1278,12 +1954,9 @@ static int mqtt_reconnect(void) {
       return 0;
     }
 
-    if (err == -4) {
-      printf("TCP connection failed (-4): check network or MQTT broker status\n");
-    } else {
-      printf("mqtt_connect failed: %d (see mqttclient error codes)\n", err);
-    }
-    sleep(delay);
+    printf("mqtt_connect failed: %d, retrying in %d seconds...\n", err,
+           MQTT_RECONNECT_DELAY);
+    sleep(MQTT_RECONNECT_DELAY);
   }
 
   printf("MQTT reconnect failed after %d attempts\n",
@@ -1304,10 +1977,12 @@ static int mqtt_reconnect(void) {
  * 1. 检查MQTT连接状态，断开则重连
  * 2. 发布遥测数据
  * 3. 执行自动控制
+ * 4. AI定期巡检（每60秒）
  */
 static void *telemetry_thread_func(void *arg) {
   (void)arg;
   static time_t last_heartbeat_time = 0;
+  static time_t last_ai_check_time = 0;
 
   while (running) {
     sleep(TELEMETRY_INTERVAL);
@@ -1323,10 +1998,19 @@ static void *telemetry_thread_func(void *arg) {
     if (client && mqtt_connected) {
       refresh_sensor_cache();
       publish_telemetry();
+
+      /* AI巡检必须在融合评分之前运行，确保评分用最新AI结果 */
+      time_t now = time(NULL);
+      if (app_config.ai.enabled &&
+          now - last_ai_check_time >= app_config.ai.periodic_interval) {
+        last_ai_check_time = now;
+        printf("AI periodic check starting...\n");
+        (void)ai_detect_and_vote();
+      }
+
       auto_control();
 
       /* 心跳上报 */
-      time_t now = time(NULL);
       if (now - last_heartbeat_time >= HEARTBEAT_INTERVAL) {
         publish_heartbeat();
         last_heartbeat_time = now;
@@ -1375,9 +2059,7 @@ static void handle_rpc_control(const char *method, cJSON *params_obj,
     if (on && cJSON_IsNumber(on)) {
       int ret = rpc_func(on->valueint);
       if (ret == 0 && state) {
-        pthread_mutex_lock(&state_mutex);
         *state = on->valueint;
-        pthread_mutex_unlock(&state_mutex);
       }
       publish_response(method, (ret == 0) ? 1 : 0, NULL);
     } else {

@@ -88,6 +88,7 @@ static int read_response_and_parse_locked(int *result)
             retry_count++;
             if (retry_count >= max_retries) {
                 printf("read timeout after %d retries\n", max_retries);
+                if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
                 return -1;
             }
             continue;
@@ -98,6 +99,7 @@ static int read_response_and_parse_locked(int *result)
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
         printf("JSON parse error\n");
+        if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
         return -1;
     }
     cJSON *result_obj = cJSON_GetObjectItem(root, "result");
@@ -107,6 +109,7 @@ static int read_response_and_parse_locked(int *result)
         return 0;
     }
     cJSON_Delete(root);
+    if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
     return -1;
 }
 
@@ -122,12 +125,14 @@ static int read_response_and_parse_array_locked(int *humi, int *temp)
         iLen = read_with_timeout(sock, buf, sizeof(buf), 3000);
         if (iLen < 0) {
             printf("read rpc reply err : %d\n", iLen);
+            if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
             return -1;
         }
         if (iLen == 0) {
             retry_count++;
             if (retry_count >= max_retries) {
                 printf("read timeout after %d retries\n", max_retries);
+                if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
                 return -1;
             }
             continue;
@@ -257,13 +262,6 @@ int rpc_relay2_control(int on)
 int rpc_relay2_read(int *value)
 {
     return rpc_call_int_result("relay2_read", "", value);
-}
-
-int rpc_camera_capture_jpeg(const char *filename)
-{
-    char params[256];
-    snprintf(params, sizeof(params), "\"%s\"", filename ? filename : "/tmp/capture.jpg");
-    return rpc_call_no_result("camera_capture_jpeg", params);
 }
 
 int RPC_Client_Init(void)

@@ -15,6 +15,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    relayBusy = false;
     setWindowTitle("智能家居监控系统 v3.0");
 
     /* 初始化RPC连接 */
@@ -72,40 +73,50 @@ QLabel *MainWindow::GetTempLabel()
 /* ===== LED 控制（板载LED） ===== */
 void MainWindow::on_pushButton_led_clicked()
 {
-    /* 先读当前状态 */
-    int current = 0;
-    int ret = rpc_led_control(1);  /* JSON-RPC是toggle语义，此处用set */
-    /* 实际上 led_control 是 set 操作 */
-    /* 不需要本地翻转，等 relayTimer 回读真实状态 */
+    if (relayBusy) return;
+    relayBusy = true;
+    QTimer::singleShot(1000, this, [this]() { relayBusy = false; });
+
+    int ret = rpc_led_control(1);
     if (ret == 0) {
         statusBar()->showMessage("LED 控制成功", 2000);
     } else {
         statusBar()->showMessage("LED 控制失败", 2000);
+        relayBusy = false;
     }
 }
 
 /* ===== 风扇控制（继电器1） ===== */
 void MainWindow::on_pushButton_fan_clicked()
 {
+    if (relayBusy) return;
+    relayBusy = true;
+    QTimer::singleShot(1000, this, [this]() { relayBusy = false; });
+
     int current = 0;
     if (rpc_relay_read(&current) == 0) {
         int newState = current ? 0 : 1;
         if (rpc_relay_control(newState) == 0) {
             statusBar()->showMessage(
                 QString("风扇 %1").arg(newState ? "已开启" : "已关闭"), 2000);
-            /* 立即刷新状态 */
             refreshRelayStates();
         } else {
             statusBar()->showMessage("风扇控制失败", 2000);
+            relayBusy = false;
         }
     } else {
         statusBar()->showMessage("读取风扇状态失败", 2000);
+        relayBusy = false;
     }
 }
 
 /* ===== LED灯控制（继电器2） ===== */
 void MainWindow::on_pushButton_led_lamp_clicked()
 {
+    if (relayBusy) return;
+    relayBusy = true;
+    QTimer::singleShot(1000, this, [this]() { relayBusy = false; });
+
     int current = 0;
     if (rpc_relay2_read(&current) == 0) {
         int newState = current ? 0 : 1;
@@ -115,31 +126,20 @@ void MainWindow::on_pushButton_led_lamp_clicked()
             refreshRelayStates();
         } else {
             statusBar()->showMessage("LED灯控制失败", 2000);
+            relayBusy = false;
         }
     } else {
         statusBar()->showMessage("读取LED灯状态失败", 2000);
+        relayBusy = false;
     }
 }
 
-/* ===== 摄像头抓拍 ===== */
+/* ===== 摄像头抓拍（由系统自动管理） ===== */
 void MainWindow::on_pushButton_camera_clicked()
 {
-    ui->value_camera_result->setText("正在抓拍...");
+    ui->value_camera_result->setText("📷 系统自动管理中");
     ui->value_camera_result->setStyleSheet("color: #2196F3;");
-    QCoreApplication::processEvents();
-
-    char path[64];
-    snprintf(path, sizeof(path), "/tmp/qt_capture_%ld.jpg", time(NULL));
-    int ret = rpc_camera_capture_jpeg(path);
-    if (ret == 0) {
-        ui->value_camera_result->setText("✅ 抓拍成功");
-        ui->value_camera_result->setStyleSheet("color: #4CAF50;");
-        statusBar()->showMessage(QString("抓拍已保存: %1").arg(path), 3000);
-    } else {
-        ui->value_camera_result->setText("❌ 抓拍失败");
-        ui->value_camera_result->setStyleSheet("color: #F44336;");
-        statusBar()->showMessage("摄像头抓拍失败，请检查设备", 3000);
-    }
+    statusBar()->showMessage("摄像头由AI系统自动管理", 2000);
 }
 
 /* ===== 退出 ===== */

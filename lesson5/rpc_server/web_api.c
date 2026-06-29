@@ -12,7 +12,6 @@
 #include "cJSON.h"
 #include "hal.h"
 #include <ctype.h>
-#include <dirent.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,38 +162,8 @@ int api_camera_list(const char *method, const char *path,
   offset += snprintf(response + offset, response_size - offset, "{\"files\":[");
   FILE *fp = fopen("www/camera_capture.jpg", "r");
   if (fp) { fclose(fp); offset += snprintf(response + offset, response_size - offset, "\"camera_capture.jpg\""); has_entry = 1; }
-  {
-    DIR *dir = opendir("/tmp");
-    if (dir) {
-      struct dirent *entry;
-      /* 收集匹配的文件名到一个简单数组 */
-      char *names[64];
-      int count = 0;
-      while ((entry = readdir(dir)) != NULL && count < 64) {
-        if (strncmp(entry->d_name, "camera_", 7) == 0 &&
-            strstr(entry->d_name, ".jpg")) {
-          names[count] = strdup(entry->d_name);
-          if (names[count]) count++;
-        }
-      }
-      closedir(dir);
-      /* 简单按名称排序（最新的通常是文件修改时间最近的） */
-      for (int i = 0; i < count - 1; i++) {
-        for (int j = i + 1; j < count; j++) {
-          if (strcmp(names[i], names[j]) < 0) {
-            char *tmp = names[i]; names[i] = names[j]; names[j] = tmp;
-          }
-        }
-      }
-      int limit = count < 10 ? count : 10;
-      for (int i = 0; i < limit && offset < response_size - 50; i++) {
-        offset += snprintf(response + offset, response_size - offset,
-                           "%s\"/tmp/%s\"", has_entry ? "," : "", names[i]);
-        has_entry = 1;
-        free(names[i]);
-      }
-    }
-  }
+  fp = popen("ls -t /tmp/camera_*.jpg 2>/dev/null | head -10", "r");
+  if (fp) { char line[256]; while (fgets(line, sizeof(line), fp) && offset < response_size - 50) { line[strcspn(line,"\n")]=0; if (strlen(line)>0) { offset += snprintf(response+offset, response_size-offset, "%s\"%s\"", has_entry?",":"", line); has_entry=1; } } pclose(fp); }
   snprintf(response + offset, response_size - offset, "]}");
   return 0;
 }
@@ -205,8 +174,6 @@ int api_camera_view(const char *method, const char *path,
   char filepath[256] = {0}; const char *q;
   if ((q = strstr(path, "file="))) { q += 5; const char *end = strchr(q, '&'); if (end) { size_t len = (size_t)(end - q); if (len < sizeof(filepath)) { memcpy(filepath, q, len); } } else { strncpy(filepath, q, sizeof(filepath)-1); } }
   if (strlen(filepath) == 0) { snprintf(response, response_size, "{\"success\":0,\"error\":\"missing file param\"}"); return 0; }
-  /* 防止路径遍历 */
-  if (strstr(filepath, "..")) { snprintf(response, response_size, "{\"success\":0,\"error\":\"invalid path\"}"); return 0; }
   int allowed = 0;
   if (strcmp(filepath, "camera_capture.jpg") == 0) allowed = 1;
   else if (strncmp(filepath, "/tmp/camera_", 12) == 0) allowed = 1;
@@ -215,8 +182,6 @@ int api_camera_view(const char *method, const char *path,
   if (!fp && strchr(filepath, '/') == NULL) { char www[256]; snprintf(www, sizeof(www), "www/%s", filepath); fp = fopen(www, "rb"); }
   if (!fp) { snprintf(response, response_size, "{\"success\":0,\"error\":\"file not found\"}"); return 0; }
   fseek(fp, 0, SEEK_END); long size = ftell(fp); fseek(fp, 0, SEEK_SET);
-  /* 限制最大图片大小（10MB）防止OOM */
-  if (size <= 0 || size > 10 * 1024 * 1024) { fclose(fp); snprintf(response, response_size, "{\"success\":0,\"error\":\"invalid size\"}"); return 0; }
   unsigned char *img = (unsigned char *)malloc(size); if (!img) { fclose(fp); snprintf(response, response_size, "{\"success\":0,\"error\":\"memory\"}"); return 0; }
   fread(img, 1, size, fp); fclose(fp);
   int out_len = 4 * ((size + 2) / 3); char *b64 = (char *)malloc(out_len + 1);
@@ -490,7 +455,7 @@ static void save_session(const char *token, const char *username) {
   cJSON_AddNumberToObject(ns, "expires", (double)(now + 86400));
   cJSON_AddItemToArray(sessions, ns);
   char *json_str = cJSON_PrintUnformatted(root); cJSON_Delete(root);
-  if (json_str) { fp = fopen("/tmp/web_sessions.json", "w"); if (fp) { fprintf(fp, "%s", json_str); fchmod(fileno(fp), 0600); fclose(fp); } free(json_str); }
+  if (json_str) { fp = fopen("/tmp/web_sessions.json", "w"); if (fp) { fprintf(fp, "%s", json_str); fclose(fp); } free(json_str); }
 }
 
 static void extract_token(const char *body, char *token, int token_size) {
@@ -503,11 +468,6 @@ static void extract_token(const char *body, char *token, int token_size) {
 int api_login(const char *method, const char *path,
               const char *body, char *response, int response_size) {
   (void)method; (void)path;
-  /* 简单暴力破解防护：连续失败3次后延迟1秒 */
-  static int login_failures = 0;
-  if (login_failures >= 3) {
-    sleep(1);
-  }
   if (!body || strlen(body)==0) { snprintf(response, response_size, "{\"success\":0,\"error\":\"empty\"}"); return -1; }
   cJSON *root = cJSON_Parse(body); if (!root) { snprintf(response, response_size, "{\"success\":0,\"error\":\"invalid JSON\"}"); return -1; }
   cJSON *user_item = cJSON_GetObjectItem(root, "username"), *pass_item = cJSON_GetObjectItem(root, "password");
@@ -553,12 +513,10 @@ int api_login(const char *method, const char *path,
   char input_hash[65];
   hash_password_hex(pass_item->valuestring, input_hash);
   if (strcmp(user_item->valuestring, cfg_user) != 0 || strcmp(input_hash, cfg_hash) != 0) {
-    login_failures++;
     cJSON_Delete(root);
     snprintf(response, response_size, "{\"success\":0,\"error\":\"invalid credentials\"}");
     return -1;
   }
-  login_failures = 0; /* 登录成功重置计数器 */
   char token[64]; generate_secure_token(token, sizeof(token)); save_session(token, user_item->valuestring);
   cJSON_Delete(root);
   snprintf(response, response_size, "{\"success\":1,\"token\":\"%s\",\"username\":\"%s\",\"expires_in\":86400}", token, cfg_user);
@@ -645,7 +603,8 @@ int api_export_data(const char *method, const char *path,
   int temp = -1, humi = -1, pir = -1, light = -1, smoke = -1, relay1 = -1, relay2 = -1;
   hal_sensor_dht11_read(&humi, &temp); hal_sensor_pir_read(&pir); hal_sensor_light_read(&light);
   hal_sensor_smoke_digital_read(&smoke); hal_relay1_read(&relay1); hal_relay2_read(&relay2);
-  char hostname[64] = ""; gethostname(hostname, sizeof(hostname));
+  char hostname[64] = ""; FILE *fp = popen("hostname", "r");
+  if (fp) { if (fgets(hostname, sizeof(hostname), fp)) hostname[strcspn(hostname,"\n")]=0; pclose(fp); }
   long timestamp = time(NULL); char time_str[64]; struct tm *tm_info = localtime(&timestamp); strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
   if (strcmp(format, "csv") == 0) { int off = 0; off += snprintf(response+off, response_size-off, "timestamp,device,temperature,humidity,pir,light,smoke,relay1,relay2\r\n"); off += snprintf(response+off, response_size-off, "%s,%s,%d,%d,%d,%d,%d,%d,%d\r\n", time_str, hostname, temp, humi, pir, light, smoke, relay1, relay2); }
   else { snprintf(response, response_size, "{\"success\":1,\"format\":\"json\",\"data\":{\"timestamp\":\"%s\",\"device\":\"%s\",\"temperature\":%d,\"humidity\":%d,\"pir\":%d,\"light\":%d,\"smoke\":%d,\"relay1\":%d,\"relay2\":%d}}", time_str, hostname, temp, humi, pir, light, smoke, relay1, relay2); }

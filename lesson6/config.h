@@ -83,6 +83,28 @@ typedef struct {
   int max_retries;
 } rpc_config_t;
 
+/** @brief 配置结构体 - AI检测配置 */
+typedef struct {
+  int enabled;
+  char server_host[CONFIG_MAX_STRING_LEN];
+  int server_port;
+  char detect_path[CONFIG_MAX_STRING_LEN];
+  int periodic_interval;
+  float confidence_threshold;
+  int consecutive_frames;
+  int check_interval;
+  /** 多传感器融合权重 */
+  int weight_smoke;      /* 烟雾传感器触发 */
+  int weight_ai_fire;    /* AI检测到明火 */
+  int weight_ai_smoke;   /* AI检测到烟雾 */
+  int weight_temp_rise;  /* 温度快速上升 */
+  int weight_temp_high;  /* 温度超阈值 */
+  int weight_humi_drop;  /* 湿度骤降 */
+  int weight_light;      /* 光照突变 */
+  int weight_device;     /* 设备状态异常 */
+  int weight_pir;        /* PIR异常有人 */
+} ai_config_t;
+
 /** @brief 完整配置结构体 */
 typedef struct {
   mqtt_config_t mqtt;
@@ -92,6 +114,7 @@ typedef struct {
   thresholds_config_t thresholds;
   intervals_config_t intervals;
   rpc_config_t rpc;
+  ai_config_t ai;
 } app_config_t;
 
 /**

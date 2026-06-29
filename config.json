@@ -48,7 +48,26 @@
     "rpc": {
         "server_host": "127.0.0.1",
         "port": 1234,
-        "read_timeout_ms": 3000,
+        "read_timeout_ms": 5000,
         "max_retries": 10
+    },
+    "ai_detection": {
+        "enabled": 1,
+        "server_host": "your_ai_server_ip",
+        "server_port": 5081,
+        "detect_path": "/detect",
+        "periodic_interval": 10,
+        "confidence_threshold": 0.30,
+        "consecutive_frames": 2,
+        "check_interval": 3,
+        "weight_smoke": 40,
+        "weight_ai_fire": 30,
+        "weight_ai_smoke": 10,
+        "weight_temp_rise": 20,
+        "weight_temp_high": 15,
+        "weight_humi_drop": 10,
+            "weight_light": 10,
+            "weight_device": 10,
+            "weight_pir": 5
     }
 }

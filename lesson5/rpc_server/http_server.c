@@ -188,12 +188,6 @@ static void handle_static_file(int client_fd, const char *path) {
   char *q = strchr(clean_path, '?');
   if (q) *q = '\0';
 
-  /* 防止路径遍历攻击：拒绝包含 .. 的路径 */
-  if (strstr(clean_path, "..")) {
-    send_error(client_fd, 400, "Invalid path");
-    return;
-  }
-
   /* 构建文件路径 */
   if (strcmp(clean_path, "/") == 0) {
     snprintf(filepath, sizeof(filepath), "%s/index.html", g_http.root_dir);

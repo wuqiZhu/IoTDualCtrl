@@ -68,6 +68,26 @@ static void config_init_defaults(app_config_t *config) {
   config->rpc.port = 1234;
   config->rpc.read_timeout_ms = 3000;
   config->rpc.max_retries = 10;
+
+  /* AI检测默认配置 */
+  config->ai.enabled = 0;
+  strcpy(config->ai.server_host, "111.230.244.208");
+  config->ai.server_port = 5081;
+  strcpy(config->ai.detect_path, "/detect");
+  config->ai.periodic_interval = 60;
+  config->ai.confidence_threshold = 0.30;
+  config->ai.consecutive_frames = 3;
+  config->ai.check_interval = 3;
+  /* 多传感器融合默认权重（总分100）*/
+  config->ai.weight_smoke = 40;
+  config->ai.weight_ai_fire = 30;
+  config->ai.weight_ai_smoke = 20;
+  config->ai.weight_temp_rise = 20;
+  config->ai.weight_temp_high = 15;
+  config->ai.weight_humi_drop = 10;
+  config->ai.weight_light = 10;
+  config->ai.weight_device = 10;
+  config->ai.weight_pir = 5;
 }
 
 /**
@@ -243,6 +263,34 @@ int config_load(const char *filename, app_config_t *config) {
     config->rpc.max_retries = json_get_int(rpc, "max_retries", 10);
   }
 
+  /* 读取AI检测配置 */
+  cJSON *ai = cJSON_GetObjectItem(root, "ai_detection");
+  if (ai) {
+    config->ai.enabled = json_get_int(ai, "enabled", 0);
+    json_get_string(ai, "server_host", config->ai.server_host,
+                    CONFIG_MAX_STRING_LEN);
+    config->ai.server_port = json_get_int(ai, "server_port", 5081);
+    json_get_string(ai, "detect_path", config->ai.detect_path,
+                    CONFIG_MAX_STRING_LEN);
+    config->ai.periodic_interval = json_get_int(ai, "periodic_interval", 60);
+    config->ai.consecutive_frames = json_get_int(ai, "consecutive_frames", 3);
+    config->ai.check_interval = json_get_int(ai, "check_interval", 3);
+    /* confidence_threshold is float, read from JSON */
+    { cJSON *ct = cJSON_GetObjectItem(ai, "confidence_threshold");
+      if (ct && cJSON_IsNumber(ct))
+        config->ai.confidence_threshold = (float)ct->valuedouble; }
+    /* 融合权重 */
+    config->ai.weight_smoke = json_get_int(ai, "weight_smoke", 40);
+    config->ai.weight_ai_fire = json_get_int(ai, "weight_ai_fire", 30);
+    config->ai.weight_ai_smoke = json_get_int(ai, "weight_ai_smoke", 20);
+    config->ai.weight_temp_rise = json_get_int(ai, "weight_temp_rise", 20);
+    config->ai.weight_temp_high = json_get_int(ai, "weight_temp_high", 15);
+    config->ai.weight_humi_drop = json_get_int(ai, "weight_humi_drop", 10);
+    config->ai.weight_light = json_get_int(ai, "weight_light", 10);
+    config->ai.weight_device = json_get_int(ai, "weight_device", 10);
+    config->ai.weight_pir = json_get_int(ai, "weight_pir", 5);
+  }
+
   cJSON_Delete(root);
   return 0;
 }
@@ -325,6 +373,13 @@ void config_print(const app_config_t *config) {
   printf("  pir_off_delay: %d\n", config->thresholds.pir_off_delay);
   printf("  smoke_fan_duration: %d\n", config->thresholds.smoke_fan_duration);
   printf("  smoke_alert_interval: %d\n", config->thresholds.smoke_alert_interval);
+  printf("AI Detection:\n");
+  printf("  enabled: %d\n", config->ai.enabled);
+  printf("  server_host: %s\n", config->ai.server_host);
+  printf("  server_port: %d\n", config->ai.server_port);
+  printf("  periodic_interval: %d\n", config->ai.periodic_interval);
+  printf("  consecutive_frames: %d\n", config->ai.consecutive_frames);
+  printf("  check_interval: %d\n", config->ai.check_interval);
   printf("====================\n");
 }
 

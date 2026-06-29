@@ -23,8 +23,10 @@ void DHT11Thread::run()
             temp = (int)raw_temp;
 
             if (humi >= 0 && temp >= 0) {
-                emit updateHumidity(QString::number(humi));
-                emit updateTemperature(QString::number(temp));
+                QString humiStr = QString("湿度: %1%").arg(humi);
+                QString tempStr = QString("温度: %1°C").arg(temp);
+                emit updateHumidity(humiStr);
+                emit updateTemperature(tempStr);
             }
         } else {
             qDebug() << "DHT11 read failed, retrying...";

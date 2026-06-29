@@ -38,7 +38,7 @@ grep -rn "8\.140\." --include="*.c" --include="*.cpp" --include="*.h" --include=
 # 检查是否有硬编码凭据（仅扫描关键文件，避免误报）
 echo "检查敏感信息（仅提示，请手动确认）..."
 grep -rn "INFLUXDB_TOKEN\s*=\s*\"[a-zA-Z0-9_\-]\{10,\}\"" cloud/ --include="*.py" && echo "⚠️ 发现可能的硬编码INFLUXDB_TOKEN" || echo "✅ 无硬编码INFLUXDB_TOKEN"
-grep -rn "MQTT_PASS\s*=\s*\"[a-zA-Z0-9_@-]\{4,\}\"" cloud/ --include="*.py" && echo "⚠️ 发现可能的硬编码MQTT_PASS" || echo "✅ 无硬编码MQTT_PASS"
+grep -rn "MQTT_PASS\s*=\s*\"[a-zA-Z0-9_\-@]\{4,\}\"" cloud/ --include="*.py" && echo "⚠️ 发现可能的硬编码MQTT_PASS" || echo "✅ 无硬编码MQTT_PASS"
 
 # 五、Python依赖检查
 echo ""

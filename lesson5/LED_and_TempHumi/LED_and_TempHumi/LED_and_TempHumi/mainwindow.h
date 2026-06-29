@@ -40,6 +40,7 @@ private:
     QTimer *smokeTimer;
 
     void setRelayStateLabel(QLabel *label, int state);
+    bool relayBusy;  /* 按钮防抖 */
 };
 
 #endif // MAINWINDOW_H

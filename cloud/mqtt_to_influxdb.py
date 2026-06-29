@@ -84,8 +84,7 @@ IMAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
 os.makedirs(IMAGE_DIR, exist_ok=True)
 latest_smoke_image = None        # 最新烟雾照片路径
 pending_alert = None             # 待发送的告警（等待图片）
-pending_image = None             # 已上传但还没告警来配对的图片路径
-pending_lock = threading.Lock()  # 保护 pending_alert/pending_image 的线程安全
+pending_lock = threading.Lock()  # 保护pending_alert的线程安全
 
 
 class ImageHTTPHandler(BaseHTTPRequestHandler):
@@ -112,20 +111,18 @@ class ImageHTTPHandler(BaseHTTPRequestHandler):
             fp = os.path.join(IMAGE_DIR, fn)
             with open(fp, 'wb') as f:
                 f.write(body)
-            global latest_smoke_image, pending_alert, pending_image
+            global latest_smoke_image, pending_alert
             latest_smoke_image = fp
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "file": fn}).encode())
             logger.info(f"[HTTP] 图片已接收: {fn} ({content_len} bytes), event={event_type}")
-            # 有等待的告警 → 立即发送；没有 → 暂存图片路径等告警来
+            # 如果有待处理的告警，立即发送带图的钉钉
             with pending_lock:
                 pa = pending_alert
                 if pa:
                     pending_alert = None
-                else:
-                    pending_image = fp
             if pa:
                 send_alert_with_image(pa["method"], pa["level"], pa["ts"])
         else:
@@ -227,23 +224,14 @@ def handle_telemetry(data):
 
 def handle_alert(data):
     """处理告警消息 → 钉钉通知"""
-    global latest_smoke_image, pending_alert, pending_image
+    global pending_alert
     level_num = data.get("level", 1)
     level_str = "HIGH" if level_num >= 1 else "LOW"
     ts = data.get("timestamp", time.time())
-    logger.info(f"收到告警 [{level_str}]")
+    logger.info(f"收到告警 [{level_str}] ，等待图片...")
 
-    # 图片可能已经提前到了（HTTP上传快于MQTT消息）
-    with pending_lock:
-        img = pending_image
-        if img:
-            pending_image = None
-            latest_smoke_image = img
-    if img:
-        send_alert_with_image(data.get("method", "alert"), level_str, ts)
-        return
-
-    # 图片还没到，暂存告警等图片来
+    # 总是等待当前这次报警对应的图片，避免误用上一条报警的旧图
+    # 图片会在几秒内通过HTTP上传到达，届时触发钉钉发送
     with pending_lock:
         pending_alert = {"method": data.get("method", "alert"),
                          "level": level_str, "ts": ts, "time": time.time()}

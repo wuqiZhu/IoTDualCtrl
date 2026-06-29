@@ -160,6 +160,11 @@ static int read_response_and_parse_locked(int *result) {
       retry_count++;
       if (retry_count >= MAX_RETRIES) {
         printf("read timeout after %d retries\n", MAX_RETRIES);
+        /* 关闭socket强制下次调用重新连接，避免旧数据污染 */
+        if (g_iSocketClient > 0) {
+          close(g_iSocketClient);
+          g_iSocketClient = -1;
+        }
         return -1;
       }
       continue;
@@ -171,6 +176,11 @@ static int read_response_and_parse_locked(int *result) {
   cJSON *root = cJSON_Parse(buf);
   if (!root) {
     printf("JSON parse error\n");
+    /* 解析失败也断开，避免socket状态不一致 */
+    if (g_iSocketClient > 0) {
+      close(g_iSocketClient);
+      g_iSocketClient = -1;
+    }
     return -1;
   }
 
@@ -183,6 +193,11 @@ static int read_response_and_parse_locked(int *result) {
   }
 
   cJSON_Delete(root);
+  if (g_iSocketClient > 0) {
+    close(g_iSocketClient);
+    g_iSocketClient = -1;
+  }
+  printf("read rpc reply err : -1\n");
   return -1;
 }
 
@@ -209,6 +224,10 @@ static int read_response_and_parse_array_locked(int *humi, int *temp) {
       retry_count++;
       if (retry_count >= MAX_RETRIES) {
         printf("read timeout after %d retries\n", MAX_RETRIES);
+        if (g_iSocketClient > 0) {
+          close(g_iSocketClient);
+          g_iSocketClient = -1;
+        }
         return -1;
       }
       continue;

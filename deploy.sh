@@ -52,9 +52,6 @@ build_all() {
   info "编译 rpc_server..."
   cd "$LESSON5_DIR" && make clean && make && cd ../..
 
-  info "编译 rpc_client..."
-  cd "$LESSON5_DIR/../rpc_client" && make clean && make && cd ../..
-
   info "编译 mqtt_bridge..."
   cd "$LESSON6_DIR" && make clean && make && cd ..
 
