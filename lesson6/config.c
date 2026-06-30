@@ -81,7 +81,7 @@ static void config_init_defaults(app_config_t *config) {
   /* 多传感器融合默认权重（总分100）*/
   config->ai.weight_smoke = 40;
   config->ai.weight_ai_fire = 30;
-  config->ai.weight_ai_smoke = 20;
+  config->ai.weight_ai_smoke = 0;
   config->ai.weight_temp_rise = 20;
   config->ai.weight_temp_high = 15;
   config->ai.weight_humi_drop = 10;

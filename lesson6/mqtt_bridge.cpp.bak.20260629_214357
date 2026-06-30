@@ -849,7 +849,6 @@ static time_t g_last_ai_alert_time = 0;
  */
 static void ai_update_best_frame(const unsigned char *jpeg_data, int jpeg_len,
                                   float max_conf) {
-  g_ai_best_time = time(NULL);  /* 每次检测都更新时间，用于评分判断 */
   if (max_conf > g_ai_best_confidence) {
     /* 释放旧的最佳帧 */
     if (g_ai_best_jpeg) {
@@ -861,6 +860,7 @@ static void ai_update_best_frame(const unsigned char *jpeg_data, int jpeg_len,
       memcpy(g_ai_best_jpeg, jpeg_data, jpeg_len);
       g_ai_best_len = jpeg_len;
       g_ai_best_confidence = max_conf;
+      g_ai_best_time = time(NULL);
       printf("AI best frame updated: conf=%.4f, size=%d\n", max_conf, jpeg_len);
     }
   }
@@ -1712,21 +1712,13 @@ static int sensor_fusion_score(void) {
     }
   }
 
-  /* 4. 光照持续异常（夜间变亮=火光，白天变暗=浓烟遮光）*/
+  /* 4. 光照突变 */
   {
     static int last_light_val = -1;
-    time_t now_t_ = time(NULL); struct tm *tm_i = localtime(&now_t_);
-    int hour = tm_i ? tm_i->tm_hour : 12;
     w = get_dynamic_weight(app_config.ai.weight_light, "light");
-    /* 夜间突亮（火光照明）*/
-    if (last_light_val == 0 && g_sensor_cache.light == 1 && hour >= 18) {
+    if (w > 0 && last_light_val == 0 && g_sensor_cache.light == 1) {
       g_fusion_accum_score += w; new_signals += w;
-      printf("Fusion: night bright +%d\n", w);
-    }
-    /* 白天持续变暗（浓烟遮光）*/
-    if (hour >= 8 && hour < 18 && g_sensor_cache.light == 0) {
-      g_fusion_accum_score += w/2; new_signals += w/2;
-      printf("Fusion: day dark +%d\n", w/2);
+      printf("Fusion: sudden bright +%d\n", w);
     }
     last_light_val = g_sensor_cache.light;
   }
@@ -1768,13 +1760,16 @@ static int sensor_fusion_score(void) {
     }
   }
 
-  /* 7. AI检测结果 — 只在AI拍照的同一周期加分，不持续60秒 */
+  /* 7. AI检测结果 — 每个检测结果只加一次分，不重复利用60秒 */
+  { static time_t last_ai_score_time = 0;
   w = app_config.ai.weight_ai_fire;
   if (w > 0 && g_ai_best_confidence > app_config.ai.confidence_threshold &&
-      now - g_ai_best_time < 5) {
+      now - g_ai_best_time < 60 && g_ai_best_time > last_ai_score_time) {
+    last_ai_score_time = g_ai_best_time;
     g_fusion_accum_score += w; new_signals += w;
     printf("Fusion: AI visual confirmation +%d (conf=%.4f)\n",
            w, g_ai_best_confidence);
+    }
   }
 
   /* 并发倍率前置：多个高权重信号同时触发时，新信号总值×1.5
@@ -1791,27 +1786,6 @@ static int sensor_fusion_score(void) {
       g_fusion_accum_score += bonus;
       new_signals += bonus;
       printf("Fusion: concurrent x1.5 +%d (%d signals)\n", bonus, high_signals);
-    }
-  }
-
-  /* 温度基线：最近10次读数的平均值 */
-  {
-    static int temp_history[10] = {0};
-    static int temp_idx = 0, temp_count = 0;
-    if (g_sensor_cache.temp > 0) {
-      temp_history[temp_idx] = g_sensor_cache.temp;
-      temp_idx = (temp_idx + 1) % 10;
-      if (temp_count < 10) temp_count++;
-      int sum = 0;
-      for (int i = 0; i < temp_count; i++) sum += temp_history[i];
-      int baseline = sum / temp_count;
-      if (temp_count >= 5 && g_sensor_cache.temp > baseline + 5) {
-        int bonus = (g_sensor_cache.temp - baseline) * 2;
-        if (bonus > 20) bonus = 20;
-        g_fusion_accum_score += bonus; new_signals += bonus;
-        printf("Fusion: temp +%d above baseline (%d vs %d)\n",
-               bonus, g_sensor_cache.temp, baseline);
-      }
     }
   }
 
