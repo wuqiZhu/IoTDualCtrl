@@ -273,6 +273,42 @@ cJSON *server_relay2_read(jrpc_context *ctx, cJSON *params, cJSON *id) {
 }
 
 /* ========================================================================== */
+/*                             批量传感器读取RPC方法 */
+/* ========================================================================== */
+
+/**
+ * @brief 批量读取所有传感器数据（合并为一次RPC调用）
+ * @param ctx RPC上下文
+ * @param params 参数（未使用）
+ * @param id 请求ID
+ * @return cJSON对象包含所有传感器值
+ *
+ * 将6次独立RPC调用合并为1次，大幅减少RPC争抢。
+ */
+cJSON *server_read_all_sensors(jrpc_context *ctx, cJSON *params, cJSON *id) {
+  (void)ctx; (void)params; (void)id;
+  int pir = -1, light = -1, relay1 = -1, relay2 = -1, smoke = -1;
+  int humi = -1, temp = -1;
+
+  hal_sensor_pir_read(&pir);
+  hal_sensor_light_read(&light);
+  hal_sensor_smoke_digital_read(&smoke);
+  hal_sensor_dht11_read(&humi, &temp);
+  hal_relay1_read(&relay1);
+  hal_relay2_read(&relay2);
+
+  cJSON *result = cJSON_CreateObject();
+  cJSON_AddNumberToObject(result, "pir", pir);
+  cJSON_AddNumberToObject(result, "light", light);
+  cJSON_AddNumberToObject(result, "smoke_digital", smoke);
+  cJSON_AddNumberToObject(result, "temp", temp);
+  cJSON_AddNumberToObject(result, "humi", humi);
+  cJSON_AddNumberToObject(result, "relay", relay1);
+  cJSON_AddNumberToObject(result, "relay2", relay2);
+  return result;
+}
+
+/* ========================================================================== */
 /*                             摄像头RPC方法 */
 /* ========================================================================== */
 
@@ -355,6 +391,8 @@ int RPC_Server_Init(void) {
   jrpc_register_procedure(&my_server, server_relay2_read, "relay2_read", NULL);
   jrpc_register_procedure(&my_server, server_camera_capture_jpeg,
                           "camera_capture_jpeg", NULL);
+  jrpc_register_procedure(&my_server, server_read_all_sensors,
+                          "read_all_sensors", NULL);
 
   printf("RPC server started, listening on port %d\n", PORT);
 

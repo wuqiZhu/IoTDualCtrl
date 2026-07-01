@@ -14,6 +14,8 @@ int rpc_relay_read(int *value);
 int rpc_smoke_digital_read(int *value);
 int rpc_relay2_control(int on);
 int rpc_relay2_read(int *value);
+int rpc_read_all_sensors(int *pir, int *light, int *smoke,
+                          int *humi, int *temp, int *relay1, int *relay2);
 int RPC_Client_Init(void);
 
 #ifdef __cplusplus

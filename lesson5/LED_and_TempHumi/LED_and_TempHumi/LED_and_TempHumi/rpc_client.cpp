@@ -79,7 +79,7 @@ static int read_response_and_parse_locked(int *result)
     int retry_count = 0;
 
     do {
-        iLen = read_with_timeout(sock, buf, sizeof(buf), 3000);
+        iLen = read_with_timeout(sock, buf, sizeof(buf), 5000);
         if (iLen < 0) {
             printf("read rpc reply err : %d\n", iLen);
             return -1;
@@ -122,7 +122,7 @@ static int read_response_and_parse_array_locked(int *humi, int *temp)
     int retry_count = 0;
 
     do {
-        iLen = read_with_timeout(sock, buf, sizeof(buf), 3000);
+        iLen = read_with_timeout(sock, buf, sizeof(buf), 5000);
         if (iLen < 0) {
             printf("read rpc reply err : %d\n", iLen);
             if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
@@ -264,9 +264,39 @@ int rpc_relay2_read(int *value)
     return rpc_call_int_result("relay2_read", "", value);
 }
 
+int rpc_read_all_sensors(int *pir, int *light, int *smoke,
+                          int *humi, int *temp, int *relay1, int *relay2)
+{
+    char response[512];
+    int ret;
+    pthread_mutex_lock(&rpc_mutex);
+    ret = safe_send_locked("{\"method\":\"read_all_sensors\",\"params\":[],\"id\":\"9\"}", 58);
+    if (ret != 58) { pthread_mutex_unlock(&rpc_mutex); return -1; }
+    ret = read_with_timeout(g_iSocketClient, response, sizeof(response), 5000);
+    if (ret <= 0) {
+        if (g_iSocketClient > 0) { close(g_iSocketClient); g_iSocketClient = -1; }
+        pthread_mutex_unlock(&rpc_mutex);
+        return -1;
+    }
+    response[ret] = '\0';
+    pthread_mutex_unlock(&rpc_mutex);
+    cJSON *root = cJSON_Parse(response);
+    if (!root) return -1;
+    cJSON *result = cJSON_GetObjectItem(root, "result");
+    if (!result) { cJSON_Delete(root); return -1; }
+    if (pir) *pir = cJSON_GetObjectItem(result, "pir")->valueint;
+    if (light) *light = cJSON_GetObjectItem(result, "light")->valueint;
+    if (smoke) *smoke = cJSON_GetObjectItem(result, "smoke_digital")->valueint;
+    if (humi) *humi = cJSON_GetObjectItem(result, "humi")->valueint;
+    if (temp) *temp = cJSON_GetObjectItem(result, "temp")->valueint;
+    if (relay1) *relay1 = cJSON_GetObjectItem(result, "relay")->valueint;
+    if (relay2) *relay2 = cJSON_GetObjectItem(result, "relay2")->valueint;
+    cJSON_Delete(root);
+    return 0;
+}
+
 int RPC_Client_Init(void)
 {
-    int iSocketClient;
     struct sockaddr_in tSocketServerAddr;
     int iRet;
 

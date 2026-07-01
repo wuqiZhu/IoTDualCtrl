@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>朱相波</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f0ede8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 12px;
+            color: #2c3e3f;
+        }
+        .resume {
+            max-width: 1060px;
+            width: 100%;
+            background: #fcfaf7;
+            border-radius: 16px;
+            box-shadow: 0 16px 32px -12px rgba(60, 50, 40, 0.15);
+            padding: 16px 24px 14px;
+        }
+        .header {
+            border-bottom: 2px solid #c8d6d4;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 2px 16px;
+            align-items: center;
+        }
+        .header-job {
+            grid-column: 1; grid-row: 1;
+            font-size: 15px; font-weight: 450; color: #5a7475;
+            justify-self: start;
+        }
+        .header-email {
+            grid-column: 2; grid-row: 1;
+            font-size: 14.5px; color: #4a6364;
+            justify-self: center; text-align: left; width: 100%;
+        }
+        .header-name {
+            border-top: 2px solid #c8d6d4;
+            padding-top: 6px;
+            grid-column: 1; grid-row: 2 / span 2;
+            font-size: 30px; font-weight: 650; color: #3d5a5b;
+            letter-spacing: -0.2px; align-self: center; justify-self: start;
+        }
+        .header-phone {
+            grid-column: 2; grid-row: 2;
+            font-size: 14.5px; color: #4a6364;
+            justify-self: center; text-align: left; width: 100%;
+        }
+        .header-github {
+            grid-column: 2; grid-row: 3;
+            font-size: 14.5px; color: #4a6364;
+            justify-self: center; text-align: left; width: 100%;
+        }
+        /* 其余样式保持不变 */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 2.5fr;
+            gap: 16px;
+            margin-top: 2px;
+        }
+        .left-col { display: flex; flex-direction: column; gap: 8px; }
+        .right-col { display: flex; flex-direction: column; gap: 6px; }
+
+        .section-title {
+            font-size: 15px; font-weight: 650; letter-spacing: 0.6px;
+            color: #3d5a5b;
+            border-left: 3px solid #d49c7a;
+            padding-left: 8px; margin-bottom: 8px;
+        }
+
+        .edu-item { margin-bottom: 0; }
+        .edu-item .school { font-weight: 620; font-size: 14px; color: #3d5a5b; }
+        .edu-item .meta { font-size: 13px; color: #5a7475; margin-top: 0; display: flex; justify-content: space-between; }
+        .edu-item .courses {
+            font-size: 12.5px; color: #4a6364; margin-top: 2px; line-height: 1.5;
+            background: #f3f0eb; padding: 3px 10px; border-radius: 8px;
+        }
+
+        .skill-tags { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 2px; }
+        .skill-tags span {
+            padding: 1px 12px; border-radius: 30px;
+            font-size: 12.5px; font-weight: 470; letter-spacing: 0.1px;
+            border: 0.5px solid #d1ccc4;
+        }
+        .skill-group:nth-of-type(1) .skill-tags span {
+            background: #4a6a6b; color: #fcfaf7; border-color: #4a6a6b;
+        }
+        .skill-group:nth-of-type(2) .skill-tags span,
+        .skill-group:nth-of-type(3) .skill-tags span {
+            background: #e4eae9; color: #3d5a5b; border-color: #c8d6d4;
+        }
+        .skill-group:nth-of-type(4) .skill-tags span {
+            background: #f5ede5; color: #a87a5a; border-color: #e0d3c8;
+        }
+        .skill-group:nth-of-type(5) .skill-tags span {
+            background: #edebe8; color: #6a6a6a; border-color: #d5d0ca;
+        }
+        .skill-group { margin-bottom: 5px; }
+        .skill-group .label { font-weight: 580; font-size: 13px; color: #4a6364; display: block; margin-bottom: 1px; }
+
+        .exp-item { margin-bottom: 10px; }
+        .exp-item:last-child { margin-bottom: 0; }
+
+        .exp-header {
+            display: flex; justify-content: space-between; align-items: baseline;
+            flex-wrap: wrap; gap: 1px 8px; margin-bottom: 1px;
+        }
+        .exp-header .title { font-weight: 650; font-size: 15px; color: #3d5a5b; }
+        .exp-header .company { font-weight: 550; color: #5a7475; font-size: 14px; }
+        .exp-header .date {
+            font-size: 12px; color: #6a8a8b; font-weight: 450;
+            background: #f0ede8; padding: 0 10px; border-radius: 30px; white-space: nowrap;
+        }
+
+        .exp-sub {
+            font-size: 12px; color: #4a6364; font-weight: 500; margin-bottom: 2px;
+            background: #f3f0eb; padding: 1px 10px; border-radius: 30px; display: inline-block;
+        }
+
+        .exp-desc { font-size: 13px; line-height: 1.5; color: #2c3e3f; margin-top: 2px; }
+        .exp-desc ul { list-style: none; padding-left: 0; margin: 0; }
+        .exp-desc li {
+            position: relative; padding-left: 18px; margin-bottom: 3px;
+        }
+        .exp-desc li::before {
+            content: "▹"; position: absolute; left: 0;
+            color: #d49c7a; font-weight: 700; font-size: 14px;
+        }
+        .highlight-data {
+            background: #f5ede5; border-radius: 2px; padding: 0 4px;
+            font-weight: 600; color: #a87a5a;
+        }
+
+        .project-item { margin-bottom: 8px; }
+        .project-item:last-child { margin-bottom: 0; }
+        .project-item .proj-title { font-weight: 640; font-size: 15px; color: #3d5a5b; }
+        .project-item .proj-stack { font-size: 12px; color: #5a7475; margin-left: 4px; font-weight: 450; }
+
+        .project-item .proj-desc {
+            font-size: 13px; line-height: 1.5; color: #2c3e3f; margin-top: 2px;
+        }
+        .project-item .proj-desc ul {
+            list-style: none; padding-left: 0; margin: 0;
+        }
+        .project-item .proj-desc li {
+            position: relative; padding-left: 18px; margin-bottom: 3px;
+        }
+        .project-item .proj-desc li::before {
+            content: "▹"; position: absolute; left: 0;
+            color: #d49c7a; font-weight: 700; font-size: 14px;
+        }
+
+        .tech-tag {
+            display: inline-block;
+            background: #4a6a6b;
+            color: #fcfaf7;
+            font-size: 10.5px;
+            font-weight: 600;
+            padding: 0 8px;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+            margin-right: 4px;
+        }
+        .tech-tag-light {
+            display: inline-block;
+            background: #e4eae9;
+            color: #3d5a5b;
+            font-size: 10.5px;
+            font-weight: 600;
+            padding: 0 8px;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+            margin-right: 4px;
+        }
+
+        .proj-note {
+            font-size: 12px; color: #5a7475; margin-bottom: 2px; line-height: 1.5;
+        }
+
+        .self-eval { font-size: 12.5px; line-height: 1.5; color: #2c3e3f; }
+        .badge {
+            background: #dce6e4; border-radius: 30px; padding: 0 12px;
+            font-size: 11.5px; font-weight: 500; color: #4a6364;
+        }
+
+        .github-link {
+            margin-top: 4px; font-size: 12.5px; color: #5a7475;
+        }
+        .github-link a { color: #4a6a6b; text-decoration: none; border-bottom: 1px dotted #c8d6d4; }
+        .github-link a:hover { border-bottom: 1px solid #4a6a6b; }
+
+        @media (max-width: 820px) {
+            .two-col { grid-template-columns: 1fr; gap: 8px; }
+            .resume { padding: 16px 12px; }
+            .header { grid-template-columns: 1fr; gap: 2px; }
+            .header-job, .header-email, .header-name, .header-phone, .header-github {
+                justify-self: start; grid-column: 1; text-align: left;
+            }
+            .header-name { grid-row: 2; }
+            .header-phone { grid-row: 3; }
+            .header-github { grid-row: 4; }
+            .header-email { grid-row: 1; }
+            .header-job { grid-row: 1; }
+        }
+        @media print {
+            body { background: #fcfaf7; padding: 0.1in; }
+            .resume { box-shadow: none; border-radius: 0; padding: 0.1in; }
+            .highlight-data { background: #f5ede5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .tech-tag, .tech-tag-light { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .skill-tags span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+<div class="resume">
+    <!-- 头部信息 -->
+    <div class="header">
+        <div class="header-job">求职：嵌入式软件 / Linux 应用开发实习生</div>
+        <div class="header-email">✉ 1503486868@qq.com</div>
+        <div class="header-name">朱相波</div>
+        <div class="header-phone">☎ 13479802089</div>
+        <div class="header-github">📍 现居长春</div>
+    </div>
+
+    <!-- 双栏主体 -->
+    <div class="two-col">
+        <!-- 左侧栏 -->
+        <div class="left-col">
+            <section>
+                <div class="section-title">教育</div>
+                <div class="edu-item">
+                    <div class="school">长春大学旅游学院 · 物联网工程</div>
+                    <div class="meta"><span>2023.09 – 2027.09</span><span>本科</span></div>
+                    <div class="courses"><strong>主修：</strong>C/C++、数据结构、操作系统、计算机网络、计算机组成原理、Linux系统编程</div>
+                </div>
+            </section>
+
+            <section>
+                <div class="section-title">核心能力</div>
+                <div class="skill-group">
+                    <span class="label">嵌入式 & IoT</span>
+                    <div class="skill-tags">
+                        <span>i.MX6ULL</span><span>V4L2</span><span>ADC</span>
+                        <span>MQTT</span><span>UART/I2C/SPI</span><span>字符设备驱动</span>
+                    </div>
+                </div>
+                <div class="skill-group">
+                    <span class="label">系统 & 编程语言</span>
+                    <div class="skill-tags">
+                        <span>C/C++</span><span>Python</span><span>Linux系统编程</span>
+                        <span>epoll并发</span><span>STL</span><span>Shell脚本</span>
+                    </div>
+                </div>
+                <div class="skill-group">
+                    <span class="label">部署 & 开发工具</span>
+                    <div class="skill-tags">
+                        <span>Docker</span><span>InfluxDB</span><span>Grafana</span>
+                        <span>OTA升级</span><span>交叉编译</span><span>Git/GDB/Makefile</span>
+                    </div>
+                </div>
+                <div class="skill-group">
+                    <span class="label">证书</span>
+                    <div class="skill-tags">
+                        <span>CET-6</span><span>计算机二级</span>
+                    </div>
+                </div>
+                <div class="skill-group">
+                    <span class="label">AI工程化</span>
+                    <div class="skill-tags">
+                        <span>ONNX部署</span><span>LoRA微调</span><span>PyTorch训练导出</span>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <div class="section-title">自述</div>
+                <div class="self-eval">&emsp;&emsp;独立完成两套<span class="highlight-data">7×24h</span>无人值守项目：嵌入式物联网全链路系统 + AI分析Linux服务流水线。具备裸机驱动到容器云端部署全栈能力，擅长复杂系统分层解耦与跨平台交叉编译。
+                <br>&emsp;&emsp;熟悉ARM Linux平台交叉编译与调试，对V4L2、MQTT、JSON-RPC等嵌入式通信协议有实际项目经验；GitHub累计 <span class="highlight-data">13,000+</span> 行开源代码，涵盖IoT系统、AI推理、数据分析等多个领域，具备从需求到交付的全流程独立能力。
+                </div>
+            </section>
+        </div>
+
+        <!-- 右侧栏：项目经历 -->
+        <div class="right-col">
+            <section>
+                <div class="section-title">项目经历</div>
+
+                <!-- 项目1 -->
+                <div class="project-item">
+                    <div class="exp-header">
+                        <span class="title">智能物联网环境监控与AI火灾检测系统</span>
+                        <span class="company">个人开源项目</span>
+                        <span class="date">2025.12 – 至今</span>
+                    </div>
+                    <div style="margin: 2px 0 4px;">
+                        <span class="tech-tag">C</span>
+                        <span class="tech-tag">Linux</span>
+                        <span class="tech-tag">MQTT</span>
+                        <span class="tech-tag">YOLOv8</span>
+                        <span class="tech-tag">ONNX</span>
+                        <span class="tech-tag-light">V4L2</span>
+                        <span class="tech-tag-light">Docker</span>
+                        <span class="tech-tag-light">JSON-RPC</span>
+                    </div>
+                    <div class="proj-note">基于i.MX6ULL主控，13,000+行C/C++，集成传统传感器监控+AI视觉检测双重保障，已稳定运行6个月+。</div>
+                    <div class="proj-desc">
+                        <ul>
+                            <li><strong>分层架构与硬件抽象：</strong>设计HAL层统一封装GPIO/ADC/传感器接口，更换硬件平台仅需重写hal.c；RPC服务注册9套外设控制方法；自研HTTP服务器，对外提供20+ REST API及Web管理前端。</li>
+                            <li><strong>AI火灾检测（核心创新）：</strong>基于YOLOv8n训练D-Fire数据集（21,000张），导出ONNX格式部署腾讯云CPU推理，<span class="highlight-data">500ms/帧</span>；每10秒自动抓拍检测，滑动窗口5帧中2帧通过才触发告警，有效过滤单帧误报。</li>
+                            <li><strong>多传感器融合评分：</strong>设计8维信号融合评分算法——烟雾、AI视觉、温湿度、光照、PIR各信号加权投票，总分≥60触发ALERT；深度学习基线自动适应季节温度变化；并发倍率×1.5强化多信号同时触发场景。</li>
+                            <li><strong>状态机决策引擎：</strong>实现SAFE→MONITOR→ALERT→COOLDOWN四级状态机，AI单独检测进MONITOR，融合评分确认后进ALERT；烟雾防抖3次确认、AI置信度60秒有效期、RPC超时自动重连。</li>
+                            <li><strong>全链路告警闭环：</strong>识别火情后自动开风扇+拍照HTTP上传+MQTT双通道保障→钉钉推送＜<span class="highlight-data">5s</span>；告警图片保存最佳帧（置信度最高时），而非告警触发时刻。</li>
+                            <li><strong>云端可视化与运维：</strong>Docker部署InfluxDB+Grafana，传感器数据与AI检测结果实时可视化；双看门狗互保（30s+60s）、OTA升级回滚、100条环形缓冲区断网缓存、传感器故障60s自恢复。</li>
+                        </ul>
+                        <div class="github-link">Github：<a href="https://github.com/wuqiZhu/IoTDualCtrl" target="_blank">https://github.com/wuqiZhu/IoTDualCtrl</a>（13,000+行，开源）</div>
+                    </div>
+                </div>
+
+                <!-- 项目2 -->
+                <div class="project-item">
+                    <div class="exp-header">
+                        <span class="title">资讯捕手 · AI金融分析系统</span>
+                        <span class="company">个人项目</span>
+                        <span class="date">2025.12 – 至今</span>
+                    </div>
+                    <div style="margin: 2px 0 4px;">
+                        <span class="tech-tag">Python</span>
+                        <span class="tech-tag">Linux</span>
+                        <span class="tech-tag">ONNX</span>
+                        <span class="tech-tag">Docker</span>
+                        <span class="tech-tag-light">Flask</span>
+                        <span class="tech-tag-light">LoRA</span>
+                    </div>
+                    <div class="proj-note">全自动金融资讯分析平台，9个Docker容器部署于3台云服务器，7×24h无人值守。</div>
+                    <div class="proj-desc">
+                        <ul>
+                            <li><strong>多源数据采集：</strong>对接11个热搜平台+20个RSS源，crontab定时调度，Python多线程并发采集，日处理200+条资讯。</li>
+                            <li><strong>三级AI推理：</strong>162万条数据训练DistilBERT→ONNX量化(256MB)，CPU推理10ms/条；LoRA微调排序 + DeepSeek深度分析。</li>
+                            <li><strong>"信息磁场"聚合引擎：</strong>自研算法将44,000+条分析按13主题计算多空矛盾，超阈值自动触发建议，准确率<span class="highlight-data">90.5%</span>。</li>
+                            <li><strong>Linux部署与全自动闭环：</strong>3台Linux服务器Docker Compose编排9个容器，crontab 12条任务，Shell进程守护，运行30天+无宕机。磁场触发→钉钉推送→Flask仪表盘（6页面+10+API端点）全自动。</li>
+                            <li><strong>模型自适应优化：</strong>设计增量学习策略，每周自动收集新数据重新训练LoRA权重；构建难例回采机制，将模型预测置信度低于0.5的样本加入训练集，持续提升分类准确率。</li>
+                            <li><strong>全链路监控与运维：</strong>自研Shell健康检查脚本，监控3台服务器CPU/内存/磁盘/容器状态，异常自动钉钉告警；日志统一采集留存30天，支持一键回滚至任意历史版本。</li>
+                        </ul>
+                        <div class="github-link">Github：<a href="https://github.com/wuqiZhu/FinSight" target="_blank">https://github.com/wuqiZhu/FinSight</a></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+</body>
+</html>
